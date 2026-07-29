@@ -1,0 +1,46 @@
+# 太空侵略者 —— 像素图标设计稿
+
+[meta]
+name = '太空侵略者'
+
+[slots.default]
+r1L = ' ▄'
+r1E = '▄▀▀▄▄'
+r1R = ' '
+r2L = '▜█'
+r2R = '█▛'
+
+[slots.look-left]
+r1L = ' ▄'
+r1E = '▄▀▀▄▄'
+r1R = ' '
+r2L = '▜█'
+r2R = '█▛'
+
+[slots.look-right]
+r1L = ' ▄'
+r1E = '▄▀▀▄▄'
+r1R = ' '
+r2L = '▜█'
+r2R = '█▛'
+
+[slots.arms-up]
+r1L = '▗ '
+r1E = '▄▀▀▄▄'
+r1R = ' ▖'
+r2L = ' ▜'
+r2R = '▛ '
+
+[mid]
+row = '█████'
+
+[feet]
+row = '▘▘ ▘▘'
+
+[n2p]
+row = ' ▘   ▘ '
+
+[html]
+row1 = ' ▄▄▀▀▄▄ '
+row2 = '▜███████▛'
+row3 = '  ▘▘ ▘▘'

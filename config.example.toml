@@ -1,0 +1,22 @@
+# 复制为 config.toml 再填私有配置(config.toml 在 .gitignore 里)
+
+[display]
+# 启动画面显示的名字。最多 11 个字符(与原串 "Claude Code" 等长),
+# 仅限可打印 ASCII(名字会嵌进二进制内的 JS 源码,非 ASCII 无法等长替换);
+# 不足自动用空格居中补齐
+name = 'Loop Code'
+# 版本号显示。1-5 个字符,不足自动补空格;内部真实版本不受影响
+version = 'v9.99'
+# 图标设计稿(design/ 目录下的文件名)
+icon_design = 'octopus.toml'
+# 终端主题色(logo/边框/高亮的橙色),6 位 hex;留空 = 保持原橙 #D97757
+# 例: '2E9BFF' 天际蓝 / '00B96B' 青梅绿 / 'E0498A' 樱粉
+theme_color = ''
+
+[llm]
+# 预留: analyze 自动发现锚点失败时的 LLM 辅助分析(OpenAI 兼容接口)。
+# 只出建议,不会自动修改任何文件。
+base_url = 'https://api.example.com/v1'
+# 推荐用环境变量 PATCHER_LLM_API_KEY,不要把真实 key 提交进库
+api_key = ''
+model = 'your-model-name'

@@ -1,0 +1,24 @@
+# 私有配置(api_key 等)
+config.toml
+
+# 二进制与备份(几百 MB,绝不入库)
+bin/
+backups/
+*.orig
+*.orig.[0-9]*
+claude_code*
+
+# analyze 生成的未核对草稿
+patches/*.draft.toml
+
+# 打包产物
+build/
+dist/
+*.egg-info/
+
+# Python
+__pycache__/
+*.pyc
+
+# 系统
+.DS_Store

@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ccskin"
+version = "0.2.0"
+description = "Display-layer theming for the Claude Code CLI binary (icon, name, version, theme color)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["claude-code", "terminal", "theming", "skin", "binary-patch", "tui"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Topic :: Terminals",
+]
+dependencies = []
+
+[project.urls]
+Documentation = "https://github.com/RGB-loop/ccskin#readme"
+Source = "https://github.com/RGB-loop/ccskin"
+
+[project.scripts]
+ccskin = "patcher.cli:main"
+
+[tool.setuptools]
+packages = ["patcher"]
+
+# 本工具依赖项目根目录的 design/、patches/、config.example.toml 等数据文件,
+# 目前只支持从源码仓库运行(git clone 后 python3 -m patcher ...);
+# 不要发布到 PyPI —— pip 安装后 PROJECT_ROOT 会指向 site-packages,数据文件缺失。

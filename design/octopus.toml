@@ -1,0 +1,54 @@
+# 小章鱼 —— 像素图标设计稿(圆顶 + 大眼睛 + 小触手)
+#
+# 槽位字符数必须与原型一致(glyphpack 等长打包):
+#   default/look-* : r1L=2  r1E=5  r1R=1  r2L=2  r2R=2   (第 1 行 8 列)
+#   arms-up        : r1L=2  r1E=5  r1R=2  r2L=2  r2R=2   (第 1 行 9 列)
+#   mid.row  = 5 (第 2 行机身中部,四种变体共用一个常量,无法按变体区分)
+#   feet.row = 5 (第 3 行)、n2p.row = 7
+#   html.row1 = 8  row2 = 9  row3 = 7 (登录/错误 HTML 页)
+# 设计预览: python3 -m patcher preview octopus.toml
+
+[meta]
+name = '小章鱼'
+
+[slots.default]
+r1L = ' ▗'
+r1E = '▄▄▄▄▖'
+r1R = ' '
+r2L = '▟█'
+r2R = '█▙'
+
+[slots.look-left]
+r1L = ' ▗'
+r1E = '▄▄▄▄▖'
+r1R = ' '
+r2L = '▟█'
+r2R = '█▙'
+
+[slots.look-right]
+r1L = ' ▗'
+r1E = '▄▄▄▄▖'
+r1R = ' '
+r2L = '▟█'
+r2R = '█▙'
+
+[slots.arms-up]
+r1L = '▗ '
+r1E = '▗▄▄▄▖'
+r1R = ' ▖'
+r2L = ' ▟'
+r2R = '▙ '
+
+[mid]
+row = '█◉█◉█'
+
+[feet]
+row = '╵╵ ╵╵'
+
+[n2p]
+row = ' ╵   ╵ '
+
+[html]
+row1 = ' ▗▄▄▄▄▖ '
+row2 = '▟██◉█◉██▙'
+row3 = '  ╵╵ ╵╵'

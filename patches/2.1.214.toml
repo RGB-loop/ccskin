@@ -1,0 +1,153 @@
+# 由 patcher analyze 生成(锚点全部发现时 verified 自动为 true,可直接用)
+# 生成时间: 2026-07-29T19:30:59
+[meta]
+target_version = '2.1.214'
+design = 'octopus.toml'
+display_name = ' Loop Code '
+display_version = 'v9.99'
+theme_color = '2E9BFF'
+verified = true
+
+[[patch]]
+name = 'icon_table'
+cat = 'icon'
+desc = 'logo 像素表(4 变体 + 4 底脚行)→ 小章鱼'
+sha1 = 'd486e0f0b23d6ad99b7fdd1a228089f3501b4052'
+offset = 232060036
+new = '{default:{r1L:" \u2597",r1E:"\u2584\u2584\u2584\u2584\u2596",r1R:"\u0020",r2L:"\u259F\u2588",r2R:"\u2588\u2599"},"look-left":{r1L:" \u2597",r1E:"\u2584\u2584\u2584\u2584\u2596",r1R:"\u0020",r2L:"\u259F\u2588",r2R:"\u2588\u2599"},"look-right":{r1L:" \u2597",r1E:"\u2584\u2584\u2584\u2584\u2596",r1R:"\u0020",r2L:"\u259F\u2588",r2R:"\u2588\u2599"},"arms-up":{r1L:"\u2597\u0020",r1E:"\u2597\u2584\u2584\u2584\u2596",r1R:"\u0020\u2596",r2L:" \u259F",r2R:"\u2599 "}},N2p={default:" \u2575   \u2575 ","look-left":" \u2575   \u2575 ","look-right":" \u2575   \u2575 ","arms-up":" \u2575   \u2575 "}'
+expected = 1
+
+[[patch]]
+name = 'icon_feet'
+cat = 'icon'
+desc = '第三行小脚 ▘▘ ▝▝ → ╵╵ ╵╵'
+old = '"\u2598\u2598 \u259D\u259D"'
+offset = 232058828
+new = '"\u2575\u2575 \u2575\u2575"'
+expected = 2
+
+[[patch]]
+name = 'icon_mid'
+cat = 'icon'
+desc = '机身中部 █████ → █◉█◉█'
+old = 'clawd_background",children:"\u2588\u2588\u2588\u2588\u2588"'
+offset = 232058406
+new = 'clawd_background",children:"\u2588\u25C9\u2588\u25C9\u2588"'
+expected = 1
+
+[[patch]]
+name = 'icon_html_r12'
+cat = 'icon'
+desc = 'HTML 页 logo 第 1+2 行'
+old = "` \\u2590\\u259B\\u2588\\u2588\\u2588\\u259C\\u258C\n\\u259D\\u259C\\u2588\\u2588\\u2588\\u2588\\u2588\\u259B\\u2598"
+offset = 236983503
+new = "` \\u2597\\u2584\\u2584\\u2584\\u2584\\u2596\\u0020\n\\u259F\\u2588\\u2588\\u25C9\\u2588\\u25C9\\u2588\\u2588\\u2599"
+expected = 1
+
+[[patch]]
+name = 'icon_html_r3'
+cat = 'icon'
+desc = 'HTML 页 logo 第 3 行'
+old = '  \u2598\u2598 \u259D\u259D`;'
+offset = 236983503
+new = '  \u2575\u2575 \u2575\u2575`;'
+expected = 1
+
+[[patch]]
+name = 'name_title'
+cat = 'name'
+desc = '启动/面板标题: children:"Claude Code" → children:" Loop Code "'
+old = 'children:"Claude Code"'
+offset = 232071997
+new = 'children:" Loop Code "'
+expected = 2
+
+[[patch]]
+name = 'name_border'
+cat = 'name'
+desc = '输入框边框(展开): ("Claude Code") → (" Loop Code ")'
+old = '("Claude Code")'
+offset = 232076007
+new = '(" Loop Code ")'
+expected = 1
+
+[[patch]]
+name = 'name_border_compact'
+cat = 'name'
+desc = '输入框边框(紧凑): (" Claude Code ") → ("  Loop Code  ")'
+old = '(" Claude Code ")'
+offset = 232076079
+new = '("  Loop Code  ")'
+expected = 1
+
+[[patch]]
+name = 'name_header'
+cat = 'name'
+desc = '头部显示: ["Claude Code"," "] → [" Loop Code "," "]'
+old = '["Claude Code"," "]'
+offset = 232076169
+new = '[" Loop Code "," "]'
+expected = 1
+
+[[patch]]
+name = 'version_"v",Ida'
+cat = 'version'
+desc = '["v",Ida] → ["v9.99"]'
+old = '["v",Ida]'
+offset = 232072141
+new = '["v9.99"]'
+expected = 1
+
+[[patch]]
+name = 'version_"v",Vxr'
+cat = 'version'
+desc = '["v",Vxr] → ["v9.99"]'
+old = '["v",Vxr]'
+offset = 235810459
+new = '["v9.99"]'
+expected = 1
+
+[[patch]]
+name = 'version_"v",YZy'
+cat = 'version'
+desc = '["v",YZy] → ["v9.99"]'
+old = '["v",YZy]'
+offset = 232076223
+new = '["v9.99"]'
+expected = 1
+
+[[patch]]
+name = 'version_v${YZy}'
+cat = 'version'
+desc = '`v${YZy}` → ` v9.99 `'
+old = '`v${YZy}`'
+offset = 232076045
+new = '` v9.99 `'
+expected = 1
+
+[[patch]]
+name = 'color_claude_215_119_87)'
+cat = 'color'
+desc = 'claude: rgb(215,119,87) → rgb(46,155,255)'
+old = 'claude:"rgb(215,119,87)"'
+offset = 222531618
+new = 'claude:"rgb(46,155,255)"'
+expected = 2
+
+[[patch]]
+name = 'color_claude_255_153_51)'
+cat = 'color'
+desc = 'claude: rgb(255,153,51) → rgb(46,155,255)'
+old = 'claude:"rgb(255,153,51)"'
+offset = 222538745
+new = 'claude:"rgb(46,155,255)"'
+expected = 2
+
+[[patch]]
+name = 'color_clawd_body_215_119_87)'
+cat = 'color'
+desc = 'clawd_body: rgb(215,119,87) → rgb(46,155,255)'
+old = 'clawd_body:"rgb(215,119,87)"'
+offset = 222532918
+new = 'clawd_body:"rgb(46,155,255)"'
+expected = 4

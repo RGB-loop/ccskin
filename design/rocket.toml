@@ -1,0 +1,49 @@
+# 小火箭 —— 像素图标设计稿
+#
+# 槽位字符数约束见 octopus.toml 顶部注释(glyphpack 等长打包)。
+# 设计预览: python3 -m patcher preview rocket.toml
+
+[meta]
+name = '小火箭'
+
+[slots.default]
+r1L = '  '
+r1E = ' ▟▙  '
+r1R = ' '
+r2L = ' ▟'
+r2R = '▙ '
+
+[slots.look-left]
+r1L = '  '
+r1E = ' ▟▙  '
+r1R = ' '
+r2L = ' ▟'
+r2R = '▙ '
+
+[slots.look-right]
+r1L = '  '
+r1E = ' ▟▙  '
+r1R = ' '
+r2L = ' ▟'
+r2R = '▙ '
+
+[slots.arms-up]
+r1L = '▗ '
+r1E = ' ▟▙  '
+r1R = ' ▖'
+r2L = ' ▟'
+r2R = '▙ '
+
+[mid]
+row = '█████'
+
+[feet]
+row = '▜▄ ▄▜'
+
+[n2p]
+row = ' ▄   ▄ '
+
+[html]
+row1 = '   ▟▙   '
+row2 = ' ▟█████▙ '
+row3 = '  ▜▄ ▄▜'
