@@ -729,7 +729,9 @@ def _pool_emit(data, mapping, region, cat, patches, report, problems, prefix="")
         patches.append({
             "name": f"{prefix}{sites[0].replace('.', '_').replace(' ', '_')}",
             "cat": cat,
-            "desc": f"{label}: {old_vis!r} → {new_vis!r}",
+            # 只写替换成什么,不写原内容: 定义文件是 offset+sha1 模式,
+            # 原文一律 patch 时从用户自己的二进制现读现验(与 defio 的约定一致)
+            "desc": f"{label} → {new_vis!r}",
             "offset": entry.chars,
             "sha1": hashlib.sha1(old_b).hexdigest(),
             "enc": "latin-1" if entry.eight else "utf-16-le",

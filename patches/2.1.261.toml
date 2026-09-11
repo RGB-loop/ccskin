@@ -10,7 +10,7 @@ verified = true
 [[patch]]
 name = 'icon_default_r1L'
 cat = 'icon'
-desc = "default.r1L/look-left.r1L/look-right.r1L: ' ▐' → ' ▗'"
+desc = "default.r1L/look-left.r1L/look-right.r1L → ' ▗'"
 sha1 = '7fa82235158786192df2fa8f545b1e7f632e385b'
 offset = 71887832
 enc = 'utf-16-le'
@@ -20,7 +20,7 @@ expected = 1
 [[patch]]
 name = 'icon_n2p_default'
 cat = 'icon'
-desc = "n2p.default/n2p.arms-up: ' ▗   ▖ ' → ' ╵   ╵ '"
+desc = "n2p.default/n2p.arms-up → ' ╵   ╵ '"
 sha1 = '9ffe32f30954ab90c14c360327f9813230b17e46'
 offset = 71887976
 enc = 'utf-16-le'
@@ -30,7 +30,7 @@ expected = 1
 [[patch]]
 name = 'icon_n2p_look-left'
 cat = 'icon'
-desc = "n2p.look-left: ' ▘   ▘ ' → ' ╵   ╵ '"
+desc = "n2p.look-left → ' ╵   ╵ '"
 sha1 = '6d79748e9a4ad9b75ca91ea11604bc828b60fdd3'
 offset = 71888000
 enc = 'utf-16-le'
@@ -40,7 +40,7 @@ expected = 1
 [[patch]]
 name = 'icon_arms-up_r2L'
 cat = 'icon'
-desc = "arms-up.r2L: ' ▜' → ' ▟'"
+desc = "arms-up.r2L → ' ▟'"
 sha1 = '62873b7cd1b4c3f27df342248377a6b72f46513a'
 offset = 71887952
 enc = 'utf-16-le'
@@ -50,7 +50,7 @@ expected = 1
 [[patch]]
 name = 'icon_n2p_look-right'
 cat = 'icon'
-desc = "n2p.look-right: ' ▝   ▝ ' → ' ╵   ╵ '"
+desc = "n2p.look-right → ' ╵   ╵ '"
 sha1 = 'd9525d308b500e6aad7c51039fce8407b57d24af'
 offset = 71888024
 enc = 'utf-16-le'
@@ -60,7 +60,7 @@ expected = 1
 [[patch]]
 name = 'icon_arms-up_r1R'
 cat = 'icon'
-desc = "arms-up.r1R: '▄' → '▖'"
+desc = "arms-up.r1R → '▖'"
 sha1 = '98c8b0c548da4389251a838b8b7437b001c69c35'
 offset = 71887940
 enc = 'utf-16-le'
@@ -70,7 +70,7 @@ expected = 1
 [[patch]]
 name = 'icon_default_r2R'
 cat = 'icon'
-desc = "default.r2R/look-left.r2R/look-right.r2R: '█▀' → '█▙'"
+desc = "default.r2R/look-left.r2R/look-right.r2R → '█▙'"
 sha1 = '24708067485053e75d9b350ae2bf4a7066b726bc'
 offset = 71887876
 enc = 'utf-16-le'
@@ -80,7 +80,7 @@ expected = 1
 [[patch]]
 name = 'icon_mid_row'
 cat = 'icon'
-desc = "mid.row: '█████' → '█◉█◉█'"
+desc = "mid.row → '█◉█◉█'"
 sha1 = '1a2851d7d77422cda11d9d5bf19eebcca6039aab'
 offset = 71888152
 enc = 'utf-16-le'
@@ -90,7 +90,7 @@ expected = 1
 [[patch]]
 name = 'icon_arms-up_r2R'
 cat = 'icon'
-desc = "arms-up.r2R: '█▘' → '▙ '"
+desc = "arms-up.r2R → '▙ '"
 sha1 = 'db47383ab40595fe21010688dd8fccdde7075620'
 offset = 71887964
 enc = 'utf-16-le'
@@ -100,7 +100,7 @@ expected = 1
 [[patch]]
 name = 'icon_look-right_r1E'
 cat = 'icon'
-desc = "look-right.r1E: '█▟███▟' → '▄▄▄▄▖ '"
+desc = "look-right.r1E → '▄▄▄▄▖ '"
 sha1 = '1f680c766f483b024aba2999b6a9ba448a2473d4'
 offset = 71887908
 enc = 'utf-16-le'
@@ -110,7 +110,7 @@ expected = 1
 [[patch]]
 name = 'icon_arms-up_r1L'
 cat = 'icon'
-desc = "arms-up.r1L: '▗▟' → '▗ '"
+desc = "arms-up.r1L → '▗ '"
 sha1 = '48b2f79ecbac8076266aad73d011a1bb70fd1660'
 offset = 71887928
 enc = 'utf-16-le'
@@ -120,7 +120,7 @@ expected = 1
 [[patch]]
 name = 'icon_feet_row(小_logo)'
 cat = 'icon'
-desc = "feet.row(小 logo): '▘▘ ▝▝' → '╵╵ ╵╵'"
+desc = "feet.row(小 logo) → '╵╵ ╵╵'"
 sha1 = '2b8f084752a0a8d27bb33226ae68773c5f80bd80'
 offset = 71888216
 enc = 'utf-16-le'
@@ -130,7 +130,7 @@ expected = 1
 [[patch]]
 name = 'icon_default_r1E'
 cat = 'icon'
-desc = "default.r1E/arms-up.r1E: '▛███▛█' → '▄▄▄▄▖ '"
+desc = "default.r1E/arms-up.r1E → '▄▄▄▄▖ '"
 sha1 = 'cb894373e2166bcd43b58d442f9e33129844a55d'
 offset = 71887844
 enc = 'utf-16-le'
@@ -140,7 +140,7 @@ expected = 1
 [[patch]]
 name = 'icon_default_r2L'
 cat = 'icon'
-desc = "default.r2L/look-left.r2L/look-right.r2L: '▝▜' → '▟█'"
+desc = "default.r2L/look-left.r2L/look-right.r2L → '▟█'"
 sha1 = 'c40266bc3aa12427324e268d6734ee3e3de38cd2'
 offset = 71887864
 enc = 'utf-16-le'
@@ -150,7 +150,7 @@ expected = 1
 [[patch]]
 name = 'icon_feet_row(大_logo)'
 cat = 'icon'
-desc = "feet.row(大 logo): '▝▝ ▝▝' → '╵╵ ╵╵'"
+desc = "feet.row(大 logo) → '╵╵ ╵╵'"
 sha1 = '3c16187c7b50d914d912f7e98cfc0b28772a1749'
 offset = 71888172
 enc = 'utf-16-le'
@@ -160,7 +160,7 @@ expected = 1
 [[patch]]
 name = 'icon_look-left_r1E'
 cat = 'icon'
-desc = "look-left.r1E: '▟███▟█' → '▄▄▄▄▖ '"
+desc = "look-left.r1E → '▄▄▄▄▖ '"
 sha1 = '7cfcacc8da196eeda6b6585129fdbde82d1e6109'
 offset = 71887888
 enc = 'utf-16-le'
@@ -170,7 +170,7 @@ expected = 1
 [[patch]]
 name = 'icon_html'
 cat = 'icon'
-desc = "html: ' ▐▛███▛█\\n▝▜██████▀\\n  ▝▝ ▝▝' → ' ▗▄▄▄▄▖ \\n▟██◉█◉██▙\\n  ╵╵ ╵╵'"
+desc = "html → ' ▗▄▄▄▄▖ \\n▟██◉█◉██▙\\n  ╵╵ ╵╵'"
 sha1 = 'd07dc94eeba8462368684e333293ef95317c7d5f'
 offset = 78321248
 enc = 'utf-16-le'
@@ -180,7 +180,7 @@ expected = 1
 [[patch]]
 name = 'name'
 cat = 'name'
-desc = "name: 'Claude Code' → ' Loop Code '"
+desc = "name → ' Loop Code '"
 sha1 = '61f2de21bc4ec3ea02fbbbcc718e953a2692d5f8'
 offset = 70649376
 enc = 'latin-1'
@@ -190,7 +190,7 @@ expected = 1
 [[patch]]
 name = 'name_welcome'
 cat = 'name'
-desc = "name_welcome: 'Welcome to Claude Code' → 'Welcome to  Loop Code '"
+desc = "name_welcome → 'Welcome to  Loop Code '"
 sha1 = '5dbda879ebc1ae7b03c10b815c6c0ab53587f5e3'
 offset = 72548348
 enc = 'latin-1'
@@ -200,7 +200,7 @@ expected = 1
 [[patch]]
 name = 'color_clawd_body'
 cat = 'color'
-desc = "clawd_body: 'rgb(215,119,87)' → 'rgb(46,155,255)'"
+desc = "clawd_body → 'rgb(46,155,255)'"
 sha1 = 'e3161cd3c031125bdbed6c0a3599f3a040036d88'
 offset = 76318392
 enc = 'latin-1'
@@ -210,7 +210,7 @@ expected = 1
 [[patch]]
 name = 'color_claude'
 cat = 'color'
-desc = "claude: 'rgb(255,153,51)' → 'rgb(46,155,255)'"
+desc = "claude → 'rgb(46,155,255)'"
 sha1 = '9eedcf8b3b272bea5582b21be49541e5f2713caf'
 offset = 76319848
 enc = 'latin-1'
