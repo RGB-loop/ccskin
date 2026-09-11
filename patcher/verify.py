@@ -12,7 +12,7 @@ import signal
 import subprocess
 import time
 
-from . import discovery, glyphpack, ui
+from . import bytecode, discovery, glyphpack, ui
 
 
 _PREVIEW_WINDOW = 4000   # logo 表附近查找 mid/feet 的半径
@@ -123,6 +123,44 @@ def _capture_pty(binary: str, seconds: int = 10) -> str:
     return out.decode("utf-8", errors="replace")
 
 
+def _verify_pool(data: bytes, design, raw_name: str, padded: str) -> int:
+    """bytecode 构建: 只有常量池说了算,数源码文本会给出假阳性。
+
+    这里用「至少命中一条」而不是「恰好一条」: 原始池按内容去重,但补丁是
+    就地覆写,几个原本不同的条目被改成同一个图案后,内容就不再唯一了。
+    """
+    failures = 0
+    ui.step("图标预览(常量池)")
+    art = discovery.pool_art(design) if design else None
+    if art:
+        for line in art:
+            ui.info("   " + line)
+        for label, text in (("mid", design.get("mid", {}).get("row")),
+                            ("feet", design.get("feet", {}).get("row")),
+                            ("n2p", design.get("n2p", {}).get("row"))):
+            if not text:
+                continue
+            hits = bytecode.find(data, text)
+            (ui.ok if hits else ui.fail)(
+                f"设计稿 {label} {text!r} 在常量池: "
+                + (f"{len(hits)} 条 @ {hits[0].chars:,}" if hits else "未找到"))
+            if not hits:
+                failures += 1
+    else:
+        ui.info("未选择设计稿,跳过图标校验")
+
+    ui.step("显示内容计数(常量池)")
+    if raw_name:
+        hits = bytecode.find(data, padded)
+        (ui.ok if hits else ui.fail)(
+            f"显示名 {padded!r} 在常量池: "
+            + (f"{len(hits)} 条 @ {hits[0].chars:,}" if hits
+               else "未找到 —— 二进制可能没打补丁"))
+        if not hits:
+            failures += 1
+    return failures
+
+
 def run(binary: str, cfg: dict, pty: bool = False) -> int:
     data = pathlib.Path(binary).read_bytes()
     display = cfg.get("display", {})
@@ -132,6 +170,7 @@ def run(binary: str, cfg: dict, pty: bool = False) -> int:
 
     # 定位第三行小脚的期望内容(设计稿),给预览用
     feet_expected = None
+    design = None
     if not display.get("keep_icon"):
         try:
             from . import analyze
@@ -145,33 +184,38 @@ def run(binary: str, cfg: dict, pty: bool = False) -> int:
         except Exception:  # noqa: BLE001 — 预览是尽力而为,不因设计稿问题中断验证
             pass
 
-    ui.step("图标预览")
-    _preview(data, feet_expected)
+    try:
+        padded = discovery.validate_name(raw_name) if raw_name else ""
+    except ValueError:
+        padded = raw_name
 
     failures = 0
-    ui.step("显示内容计数")
-    if raw_name:
-        # 锚定 children:"..." 上下文计数;裸子串对 'Code' 这类常见词会假阳性
-        try:
-            padded = discovery.validate_name(raw_name)
-        except ValueError:
-            padded = raw_name
-        anchored = f'children:"{padded}"'.encode("ascii", errors="replace")
-        cnt = data.count(anchored)
-        (ui.ok if cnt else ui.fail)(f"显示名锚点 {anchored.decode()!r}: {cnt} 次")
-        if cnt == 0:
-            ui.warn("显示名未出现在标题显示位——二进制可能没打补丁")
-            failures += 1
-    if version:
-        # 按补丁写入的形状计数: ["v9.99 "](数组位)/ ` v9.99 `(模板位)
-        vb = re.escape(version.encode())
-        cnt = len(re.findall(rb'\["' + vb + rb' *"\]', data)) \
-            + len(re.findall(rb'` ?' + vb + rb' *`', data))
-        (ui.ok if cnt else ui.fail)(f"显示版本 {version!r}: {cnt} 处显示位")
-        if cnt == 0:
-            failures += 1
-    elif real_version:
-        ui.info("已选择显示真实版本,跳过版本计数")
+    if bytecode.is_bytecode_build(data):
+        failures += _verify_pool(data, design, raw_name, padded)
+        if version:
+            ui.info("bytecode 构建上版本显示位与内部版本共用一条常量,跳过版本计数")
+    else:
+        ui.step("图标预览")
+        _preview(data, feet_expected)
+        ui.step("显示内容计数")
+        if raw_name:
+            # 锚定 children:"..." 上下文计数;裸子串对 'Code' 这类常见词会假阳性
+            anchored = f'children:"{padded}"'.encode("ascii", errors="replace")
+            cnt = data.count(anchored)
+            (ui.ok if cnt else ui.fail)(f"显示名锚点 {anchored.decode()!r}: {cnt} 次")
+            if cnt == 0:
+                ui.warn("显示名未出现在标题显示位——二进制可能没打补丁")
+                failures += 1
+        if version:
+            # 按补丁写入的形状计数: ["v9.99 "](数组位)/ ` v9.99 `(模板位)
+            vb = re.escape(version.encode())
+            cnt = len(re.findall(rb'\["' + vb + rb' *"\]', data)) \
+                + len(re.findall(rb'` ?' + vb + rb' *`', data))
+            (ui.ok if cnt else ui.fail)(f"显示版本 {version!r}: {cnt} 处显示位")
+            if cnt == 0:
+                failures += 1
+        elif real_version:
+            ui.info("已选择显示真实版本,跳过版本计数")
     if failures:
         ui.fail("显示内容计数未通过")
         return 1

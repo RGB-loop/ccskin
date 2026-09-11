@@ -46,14 +46,21 @@ def load_design(project_root: pathlib.Path, design_name: str) -> dict:
         return tomlmini.loads(f.read())
 
 
-def _show_preview(patches, name, version, theme_color=None):
+def _show_preview(patches, name, version, theme_color=None, design=None):
     """原图标 vs 新图标对照 + 名字/版本/颜色汇总。"""
     for p in patches:
-        if p["name"] == "icon_table" and p.get("art_old") and p.get("art_new"):
+        if p.get("art_old") and p.get("art_new"):
             ui.info(ui.bold("图标对照(左原 / 右新):"))
             for old_line, new_line in zip(p["art_old"], p["art_new"]):
                 ui.info("  " + old_line.ljust(14) + ui.dim("→") + "  " + new_line)
             break
+    else:
+        # 常量池通道逐条替换,没有「整表」可对照,直接渲染设计稿
+        art = discovery.pool_art(design) if design else None
+        if art and any(p.get("cat") == "icon" for p in patches):
+            ui.info(ui.bold("新图标:"))
+            for line in art:
+                ui.info("  " + line)
     n_name = sum(p["expected"] for p in patches if p.get("cat") == "name")
     n_ver = sum(p["expected"] for p in patches if p.get("cat") == "version")
     n_color = sum(p["expected"] for p in patches if p.get("cat") == "color")
@@ -118,8 +125,11 @@ def run(binary: str, cfg: dict, project_root: pathlib.Path,
     version_arg = None if real_version else version
 
     ui.step("发现锚点")
+    probed = probe_version(binary)
     patches, report, problems, warnings = discovery.build_patches(
-        data, name, version_arg, design, theme_color=theme_color)
+        data, name, version_arg, design, theme_color=theme_color,
+        real_version=probed,
+        rewrite_real_version=bool(display.get("rewrite_real_version")))
     for line in report:
         ui.ok(line)
     for line in warnings:
@@ -127,7 +137,7 @@ def run(binary: str, cfg: dict, project_root: pathlib.Path,
     for line in problems:
         ui.fail(line)
 
-    label = safe_label(label or probe_version(binary) or "unknown")
+    label = safe_label(label or probed or "unknown")
     if label == "unknown":
         ui.warn("--version 探测失败,定义文件将用 unknown 命名")
     out = resolve_out(project_root, label, out=out, force=force)
@@ -154,7 +164,7 @@ def run(binary: str, cfg: dict, project_root: pathlib.Path,
         return 2
 
     ui.step("替换预览")
-    _show_preview(patches, name, version, theme_color)
+    _show_preview(patches, name, version, theme_color, design)
 
     pathlib.Path(out).write_text(defio.dumps(meta, patches), encoding="utf-8")
     ui.step("完成")

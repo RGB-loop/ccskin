@@ -20,7 +20,7 @@
 import hashlib
 import re
 
-from . import glyphpack
+from . import bytecode, glyphpack
 
 # ---------- 稳定锚点(raw 字符串,保留字面反斜杠) ----------
 _LOGO_ANCHOR = br'r1L:" \u2590"'          # logo 表第一个槽位
@@ -40,6 +40,15 @@ VERSION_MAX = 5    # 版本显示串上限(受最窄的 ["v",X] 显示位宽度�
 
 # ---------- 名字显示位 ----------
 NAME_MAX = 11  # 原串 "Claude Code" 的字符数,替换必须等长
+
+# 大 logo 的第三行是与小 logo 不同的另一个常量(小 logo 走 _FEET_CONTENT)
+_FEET_BIG_VISIBLE = "▝▝ ▝▝"
+
+# 常量池里的产品名条目(池按内容去重,一条对应所有引用它的显示位)
+_POOL_NAME_SITES = [
+    ("Claude Code", lambda n: n, "name"),
+    ("Welcome to Claude Code", lambda n: "Welcome to " + n, "name_welcome"),
+]
 
 # 显示位在版本之间会被上游整个删掉(如 2.1.261 移除了输入框边框上的产品名)。
 # required=False 的锚点缺失只提示,不算失败;全都找不到才是结构真的变了。
@@ -564,13 +573,268 @@ def _theme_color(data, color, patches, report, problems):
         report.append(f"theme_color @ {offs[0]:,}: {prefix} → {packed} × {len(offs)}")
 
 
+def _pool_record(mapping, conflicts, old_vis, new_vis, where):
+    """登记「池里这条内容 → 换成什么」。池按内容去重,一条只能有一个目标。"""
+    if not old_vis or old_vis == new_vis:
+        return
+    prev = mapping.get(old_vis)
+    if prev is None:
+        mapping[old_vis] = (new_vis, [where])
+        return
+    if prev[0] != new_vis:
+        conflicts.setdefault(old_vis, {prev[0]: "/".join(prev[1])})[new_vis] = where
+        return
+    prev[1].append(where)   # 多个槽位共用同一条,记全便于人工核对
+
+
+def _pool_icon_map(data, design, problems, warnings):
+    """从源码 logo 表学到「当前可见内容 → 设计稿新内容」,供常量池替换用。
+
+    源码文本虽然不驱动 UI,但它保留了「哪个变体的哪个槽位是什么内容」这层
+    语义;常量池只有一堆去重后的字符串,没有这层信息。所以用源码表做地图,
+    把补丁落到池上。
+    """
+    p = data.find(_LOGO_ANCHOR)
+    if p < 0:
+        problems.append('logo 像素表锚点未找到(r1L:" ...")——版本结构可能变了')
+        return None, [], {}
+    start = data.rfind(b'{default:', 0, p)
+    if start < 0:
+        problems.append("logo 表起点 {default: 未找到")
+        return None, [], {}
+    try:
+        end1 = match_brace(data, start)
+        nstart = data.find(b'{', end1)
+        nend = match_brace(data, nstart)
+    except ValueError as e:
+        problems.append(f"logo 表括号解析失败: {e}")
+        return None, [], {}
+    table1 = data[start:end1].decode("ascii")
+    table2 = data[nstart:nend].decode("ascii")
+
+    mapping, conflicts, layouts, default_vis = {}, {}, [], {}
+    for m in _SLOT_RE.finditer(table1):
+        variant = m.group(1)
+        dslots = design.get("slots", {}).get(variant)
+        if not dslots:
+            problems.append(f"设计稿缺少变体 [{variant}] 的槽位定义")
+            continue
+        old_vis = {s: glyphpack.decode_escapes(c)
+                   for s, c in zip(_SLOT_NAMES, m.groups()[1:])}
+        if variant == "default":
+            default_vis = dict(old_vis)
+        layouts.append((variant, _layout_sig(dict(zip(_SLOT_NAMES, m.groups()[1:])))))
+        for row_slots in _ICON_ROWS:
+            if not all(s in dslots for s in row_slots):
+                continue
+            try:
+                parts = glyphpack.split_row(
+                    [len(old_vis[s]) for s in row_slots],
+                    "".join(dslots[s] for s in row_slots), row_slots)
+            except ValueError as e:
+                problems.append(f"设计稿与槽位不匹配({variant}): {e}")
+                continue
+            for s, new in zip(row_slots, parts):
+                _pool_record(mapping, conflicts, old_vis[s], new, f"{variant}.{s}")
+
+    n2p = design.get("n2p", {}).get("row")
+    if n2p:
+        for m in _ROW_RE.finditer(table2):
+            _pool_record(mapping, conflicts, glyphpack.decode_escapes(m.group(2)),
+                         n2p, f"n2p.{m.group(1)}")
+
+    mid = design.get("mid", {}).get("row")
+    if mid:
+        _pool_record(mapping, conflicts, glyphpack.decode_escapes(_MID_CONTENT),
+                     mid, "mid.row")
+    feet = design.get("feet", {}).get("row")
+    if feet:
+        # 小 logo 与大 logo 的第三行是两个不同常量,设计稿的 feet 都适用
+        _pool_record(mapping, conflicts, glyphpack.decode_escapes(_FEET_CONTENT),
+                     feet, "feet.row(小 logo)")
+        _pool_record(mapping, conflicts, _FEET_BIG_VISIBLE, feet, "feet.row(大 logo)")
+
+    for old_vis, targets in conflicts.items():
+        problems.append(
+            f"常量池按内容去重,{old_vis!r} 只有一条,但设计稿要求它同时变成 "
+            + " / ".join(f"{n!r}({w})" for n, w in targets.items())
+            + " —— 让这些槽位用同一个图案,或接受其中之一")
+    return (None if conflicts else mapping), layouts, default_vis
+
+
+def pool_art(design):
+    """设计稿渲染成三行(default 变体),给预览用。"""
+    slots = design.get("slots", {}).get("default", {})
+    if not slots:
+        return None
+    row1 = "".join(slots.get(s, "") for s in ("r1L", "r1E", "r1R"))
+    row2 = (slots.get("r2L", "") + design.get("mid", {}).get("row", "")
+            + slots.get("r2R", ""))
+    return [row1, row2, design.get("feet", {}).get("row", "")]
+
+
+def _pool_html(data, design, warnings):
+    """HTML 登录/错误页的三行 logo 在池里是一条含换行的整串,不在 logo 条目区。"""
+    html = design.get("html", {})
+    if not (html.get("row1") and html.get("row2") and html.get("row3")):
+        return {}
+    rows_new = "\n".join((html["row1"], html["row2"], html["row3"]))
+    # 老串由当前 logo 拼出来,不硬编码某个版本的图案
+    m = _SLOT_RE.search(data[data.rfind(b'{default:', 0, data.find(_LOGO_ANCHOR)):]
+                        .decode("ascii", "replace"))
+    if not m:
+        return {}
+    r1L, r1E, r1R, r2L, r2R = (glyphpack.decode_escapes(c) for c in m.groups()[1:])
+    mid = glyphpack.decode_escapes(_MID_CONTENT)
+    row1, row2 = r1L + r1E + r1R, r2L + mid + r2R
+    for feet in (_FEET_BIG_VISIBLE, glyphpack.decode_escapes(_FEET_CONTENT)):
+        old = "\n".join((row1, row2, "  " + feet))
+        if bytecode.unique(data, old):
+            if len(old) != len(rows_new):
+                warnings.append(
+                    f"HTML 页 logo 共 {len(old)} 字符,设计稿 html 行合计 "
+                    f"{len(rows_new)} 字符,跳过")
+                return {}
+            return {old: (rows_new, "html")}
+    warnings.append("HTML 页 logo 未在常量池找到(非启动画面,可忽略)")
+    return {}
+
+
+def _pool_emit(data, mapping, region, cat, patches, report, problems, prefix=""):
+    """把「内容 → 新内容」映射落成 offset+sha1 的池条目补丁。"""
+    done = 0
+    for old_vis, (new_vis, where) in sorted(mapping.items()):
+        sites = where if isinstance(where, list) else [where]
+        label = "/".join(sites)
+        hits = bytecode.find(data, old_vis, region)
+        if not hits:
+            problems.append(f"常量池里找不到 {old_vis!r}({label})")
+            continue
+        if len(hits) > 1:
+            problems.append(
+                f"{old_vis!r}({label}) 在常量池命中 {len(hits)} 条,无法确定改哪条")
+            continue
+        entry = hits[0]
+        try:
+            new_b = bytecode.replacement(entry, new_vis)
+        except ValueError as e:
+            problems.append(f"{label}: {e}")
+            continue
+        old_b = data[entry.chars:entry.chars + entry.nbytes]
+        if old_b == new_b:
+            continue
+        patches.append({
+            "name": f"{prefix}{sites[0].replace('.', '_').replace(' ', '_')}",
+            "cat": cat,
+            "desc": f"{label}: {old_vis!r} → {new_vis!r}",
+            "offset": entry.chars,
+            "sha1": hashlib.sha1(old_b).hexdigest(),
+            "enc": "latin-1" if entry.eight else "utf-16-le",
+            "new": new_b,
+            "expected": 1,
+        })
+        done += 1
+    if done:
+        report.append(f"常量池 [{cat}]: {done} 条条目")
+    return done
+
+
+def _pool_channel(data, display_name, display_version, design, theme_color,
+                  real_version, rewrite_real_version,
+                  patches, report, problems, warnings):
+    """bytecode 构建: 补丁全部打到常量池。"""
+    region = None
+    if design:
+        mapping, layouts, _default_vis = _pool_icon_map(
+            data, design, problems, warnings)
+        _report_layouts(layouts, report)
+        if mapping is not None:
+            region = bytecode.region_for(
+                data, [s for s in mapping if len(s) >= 5]) or None
+            _pool_emit(data, mapping, region, "icon", patches, report, problems,
+                       prefix="icon_")
+            _pool_emit(data, _pool_html(data, design, warnings), None, "icon",
+                       patches, report, problems, prefix="icon_")
+            _pool_leftover_art(data, mapping, region, report, warnings)
+
+    name_map = {}
+    for old_vis, make_new, where in _POOL_NAME_SITES:
+        if bytecode.unique(data, old_vis):
+            name_map[old_vis] = (make_new(display_name), where)
+        else:
+            warnings.append(f"常量池里没有 {old_vis!r},跳过({where})")
+    if not name_map:
+        problems.append("常量池里一个产品名条目都没有 —— 该版本结构变了,不要猜")
+    _pool_emit(data, name_map, None, "name", patches, report, problems)
+
+    _pool_version(data, display_version, real_version, rewrite_real_version,
+                  patches, report, problems, warnings)
+
+    if theme_color:
+        try:
+            packed = pack_rgb(*theme_color)
+        except ValueError as e:
+            problems.append(f"主题色格式失败: {e}")
+        else:
+            color_map = {}
+            for site in _COLOR_SITES:
+                old_rgb = site.split('"', 1)[1].rstrip('"')
+                if bytecode.unique(data, old_rgb):
+                    color_map[old_rgb] = (packed, site.split(":", 1)[0])
+            if not color_map:
+                report.append("theme_color: 常量池里没有已知配色条目,跳过")
+            _pool_emit(data, color_map, None, "color", patches, report, problems,
+                       prefix="color_")
+
+
+def _pool_version(data, display_version, real_version, rewrite,
+                  patches, report, problems, warnings):
+    """bytecode 构建上启动画面的版本号与 --version 共用同一条常量。"""
+    if not display_version:
+        return
+    if not real_version:
+        warnings.append("未探测到真实版本,跳过版本显示位")
+        return
+    entry = bytecode.unique(data, real_version)
+    if entry is None:
+        warnings.append(f"常量池里找不到版本常量 {real_version!r},跳过版本显示位")
+        return
+    if not rewrite:
+        warnings.append(
+            f"启动画面的版本号与 --version 共用同一条常量({real_version!r} "
+            f"@ {entry.chars}),改它会连内部版本一起改 —— 已跳过。"
+            "确要改: 配置 [display] rewrite_real_version = true")
+        return
+    if len(display_version) != len(real_version):
+        problems.append(
+            f"改内部版本常量需等长: 真实版本 {real_version!r}({len(real_version)} 字符),"
+            f"display.version {display_version!r}({len(display_version)} 字符)")
+        return
+    _pool_emit(data, {real_version: (display_version, "version")}, None,
+               "version", patches, report, problems)
+    warnings.append("已改写内部版本常量: --version 与更新检查都会看到假版本")
+
+
+def _pool_leftover_art(data, mapping, region, report, warnings):
+    """报出区间内没被设计稿覆盖到的图案条目,让上游新增的图案不至于默默漏掉。"""
+    if not region:
+        return
+    leftover = [e.text for e in bytecode.art_entries_in(data, *region)
+                if e.text not in mapping and len(e.text) >= 4]
+    if leftover:
+        warnings.append("常量池里还有未被设计稿覆盖的图案条目: "
+                        + " ".join(repr(t) for t in leftover[:6]))
+
+
 def build_patches(data: bytes, display_name: str, display_version: str, design: dict,
-                  theme_color=None):
+                  theme_color=None, real_version=None, rewrite_real_version=False):
     """返回 (patches, report, problems, warnings)。
 
     problems 是致命问题(草稿不可直接用),warnings 只是提示。
-    版本号与主题色的发现与图标/名字互相独立,不因彼此失败而跳过 ——
-    否则一个可忽略的缺失锚点会连坐掉整批本来能生成的补丁。
+
+    bytecode 构建走常量池通道: 运行时读的是 bytecode 常量池,二进制里那份
+    JS 源码文本已经不驱动 UI —— 改它能通过一切计数校验,屏幕上却毫无变化。
+    老版本(非 bytecode)仍走源码文本通道。
 
     design=None      → 不动图标(保持原图标)
     display_version=None → 不动版本位(显示真实版本)
@@ -579,6 +843,13 @@ def build_patches(data: bytes, display_name: str, display_version: str, design: 
     report: list = []
     problems: list = []
     warnings: list = []
+    if bytecode.is_bytecode_build(data):
+        report.append("bytecode 构建: 补丁打到常量池(源码文本不驱动 UI)")
+        _pool_channel(data, display_name, display_version, design, theme_color,
+                      real_version, rewrite_real_version,
+                      patches, report, problems, warnings)
+        return patches, report, problems, warnings
+
     if design:
         _icon_table(data, design, patches, report, problems)
         _icon_feet(data, design, patches, report, problems)

@@ -5,6 +5,7 @@
 """
 import hashlib
 import os
+import struct
 import pathlib
 import sys
 import tempfile
@@ -12,7 +13,8 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from patcher import defio, discovery, glyphpack, locate, patch as patch_mod, tomlmini
+from patcher import (bytecode, defio, discovery, glyphpack, locate,
+                     patch as patch_mod, tomlmini)
 
 
 def esc(s: str) -> str:
@@ -83,7 +85,8 @@ DESIGN = {
     "slots": {
         v: {"r1L": " ▗", "r1E": "▄▄▄▄▖", "r1R": " ", "r2L": "▟█", "r2R": "█▙"}
         for v in ("default", "look-left", "look-right")
-    } | {"arms-up": {"r1L": "▗ ", "r1E": "▗▄▄▄▖", "r1R": " ▖", "r2L": " ▟", "r2R": "▙ "}},
+        # arms-up 的 r1E 与 default 共用同一条常量池条目,只能靠 r1L/r1R 表现举手
+} | {"arms-up": {"r1L": "▗ ", "r1E": "▄▄▄▄▖", "r1R": " ▖", "r2L": " ▟", "r2R": "▙ "}},
     "mid": {"row": "█◉█◉█"},
     "feet": {"row": "╵╵ ╵╵"},
     "n2p": {"row": " ▄   ▄ "},
@@ -198,6 +201,186 @@ class TestDiscovery(unittest.TestCase):
         cats = {p["cat"] for p in patches}
         self.assertNotIn("icon", cats)
         self.assertNotIn("version", cats)
+
+
+# ---------- 合成 bytecode 常量池 ----------
+def pool_entry(text: str) -> bytes:
+    """按实测布局造一条常量池条目: len|flag + hash + chars + 4 字节对齐补 0。"""
+    eight = all(ord(c) < 256 for c in text)
+    chars = text.encode("latin-1") if eight else text.encode("utf-16-le")
+    head = struct.pack("<I", (len(text) | 0x80000000) if eight else len(text))
+    return head + b"\xaa\xbb\xcc\x00" + chars + b"\x00" * (-len(chars) % 4)
+
+
+def make_pool(texts) -> bytes:
+    return b"".join(pool_entry(t) for t in texts)
+
+
+def pool_strings(widths=NARROW, name="Claude Code", version="9.9.999"):
+    """合成 bundle 里应当出现在常量池里的全部字符串(与源码 logo 表一致)。"""
+    out = []
+    for v, (a, b, c) in widths.items():
+        r1, r2 = ROW1[v], ROW2[v]
+        out += [r1[:a], r1[a:a + b], r1[a + b:], r2[:2], r2[2:]]
+    out += list(N2P.values())
+    out += ["\u2588\u2588\u2588\u2588\u2588", "\u2598\u2598 \u259d\u259d", "\u259d\u259d \u259d\u259d",
+            name, "Welcome to " + name, version,
+            "rgb(215,119,87)", "rgb(255,153,51)"]
+    return [t for t in dict.fromkeys(out) if t]
+
+
+def make_bytecode_bundle(widths=NARROW, **kw) -> bytes:
+    """源码文本(给语义地图) + @bun @bytecode 标记 + 常量池(驱动 UI)。"""
+    return b"".join([
+        os.urandom(400),
+        make_logo_table(widths).encode(),
+        os.urandom(200), MID.encode(),
+        os.urandom(200), NAMES.encode(),
+        os.urandom(200), b"// @bun @bytecode\n",
+        os.urandom(200), make_pool(pool_strings(widths, **kw)),
+        os.urandom(400),
+    ])
+
+
+class TestBytecodePool(unittest.TestCase):
+    def setUp(self):
+        self.data = make_bytecode_bundle()
+
+    def test_detects_bytecode_build(self):
+        self.assertTrue(bytecode.is_bytecode_build(self.data))
+        self.assertFalse(bytecode.is_bytecode_build(make_bundle()))
+
+    def test_finds_utf16_and_8bit_entries(self):
+        u = bytecode.unique(self.data, "\u2588\u2588\u2588\u2588\u2588")
+        a = bytecode.unique(self.data, "Claude Code")
+        self.assertIsNotNone(u)
+        self.assertIsNotNone(a)
+        self.assertFalse(u.eight)
+        self.assertTrue(a.eight)
+
+    def test_entry_chars_roundtrip(self):
+        e = bytecode.unique(self.data, "Claude Code")
+        self.assertEqual(self.data[e.chars:e.chars + e.nbytes], b"Claude Code")
+
+    def test_alignment_padded_entry_found(self):
+        # 5 个 UTF-16 字符 = 10 字节,要补 2 字节才 4 字节对齐
+        e = bytecode.unique(self.data, "\u2588\u2588\u2588\u2588\u2588")
+        self.assertEqual(e.nbytes, 10)
+
+    def test_replacement_rejects_length_change(self):
+        e = bytecode.unique(self.data, "Claude Code")
+        self.assertEqual(len(bytecode.replacement(e, " Loop Code ")), e.nbytes)
+        with self.assertRaises(ValueError):
+            bytecode.replacement(e, "Loop")
+
+    def test_replacement_rejects_non_latin1_in_8bit_entry(self):
+        e = bytecode.unique(self.data, "Claude Code")
+        with self.assertRaises(ValueError):
+            bytecode.replacement(e, "\u2588oop Code  ")
+
+    def test_region_narrows_search(self):
+        region = bytecode.region_for(self.data, ["\u2588\u2588\u2588\u2588\u2588"], pad=64)
+        self.assertIsNotNone(region)
+        self.assertEqual(bytecode.find(self.data, "Claude Code", region), [])
+
+
+class TestPoolChannel(unittest.TestCase):
+    """bytecode 构建必须走常量池 —— 改源码文本能过校验但屏幕上没反应。"""
+
+    def _build(self, widths=NARROW, design=None, display_version="v9.9", **kw):
+        data = make_bytecode_bundle(widths)
+        return data, discovery.build_patches(
+            data, " Loop Code ", display_version, design or DESIGN,
+            theme_color=(46, 155, 255), real_version="9.9.999", **kw)
+
+    def _apply(self, patches, data):
+        buf = bytearray(data)
+        for p in patches:
+            buf[p["offset"]:p["offset"] + len(p["new"])] = p["new"]
+        return bytes(buf)
+
+    def _rendered_row1(self, widths):
+        """打完补丁后 default 变体第一行实际会渲染成什么。"""
+        data, (patches, _, problems, _w) = self._build(widths)
+        self.assertEqual(problems, [])
+        out = self._apply(patches, data)
+        a, b, _c = widths["default"]
+        r1 = ROW1["default"]
+        parts = []
+        for old in (r1[:a], r1[a:a + b], r1[a + b:]):
+            if not old:
+                continue
+            e = bytecode.find(data, old)[0]
+            parts.append(out[e.chars:e.chars + e.nbytes].decode("utf-16-le"))
+        return "".join(parts)
+
+    def test_patches_target_pool_not_source(self):
+        data, (patches, _, problems, _w) = self._build()
+        self.assertEqual(problems, [])
+        src = data.find(make_logo_table(NARROW).encode())
+        src_end = src + len(make_logo_table(NARROW))
+        self.assertTrue(patches)
+        for p in patches:
+            self.assertFalse(src <= p["offset"] < src_end, p["name"])
+            self.assertIsNone(p.get("old"))   # 池补丁一律 offset+sha1
+
+    def test_same_rendered_row_across_slot_layouts(self):
+        """槽位边界变了,每条条目的内容跟着变,但渲染出来的整行必须一致。"""
+        want = "".join(DESIGN["slots"]["default"][s]
+                       for s in ("r1L", "r1E", "r1R"))
+        self.assertEqual(self._rendered_row1(NARROW), want)
+        self.assertEqual(self._rendered_row1(WIDE), want)
+
+    def test_dedup_conflict_is_reported(self):
+        bad = dict(DESIGN)
+        bad["slots"] = dict(DESIGN["slots"])
+        # arms-up 的 r1E 与 default 共用一条池条目,给不同图案必须报错
+        bad["slots"]["arms-up"] = dict(DESIGN["slots"]["arms-up"], r1E="\u2596\u2596\u2596\u2596\u2596")
+        _, (_, _, problems, _w) = self._build(design=bad)
+        self.assertTrue(any("去重" in p for p in problems), problems)
+
+    def test_version_shares_constant_with_real_version(self):
+        _, (patches, _, problems, warnings) = self._build()
+        self.assertEqual(problems, [])
+        self.assertFalse([p for p in patches if p["cat"] == "version"])
+        self.assertTrue(any("--version" in w for w in warnings), warnings)
+
+    def test_version_rewrite_is_opt_in(self):
+        _, (patches, _, problems, _w) = self._build(
+            display_version="9.9.998", rewrite_real_version=True)
+        self.assertEqual(problems, [])
+        self.assertEqual([p["cat"] for p in patches].count("version"), 1)
+
+    def test_version_rewrite_requires_equal_length(self):
+        _, (_, _, problems, _w) = self._build(rewrite_real_version=True)
+        self.assertTrue(any("等长" in p for p in problems), problems)
+
+    def test_name_and_welcome_both_patched(self):
+        _, (patches, _, _p, _w) = self._build()
+        names = {p["name"] for p in patches if p["cat"] == "name"}
+        self.assertEqual(names, {"name", "name_welcome"})
+
+    def test_applying_patches_changes_pool(self):
+        data, (patches, _, problems, _w) = self._build()
+        self.assertEqual(problems, [])
+        for p in patches:
+            off, new = p["offset"], p["new"]
+            self.assertEqual(
+                hashlib.sha1(data[off:off + len(new)]).hexdigest(), p["sha1"])
+        out = self._apply(patches, data)
+        self.assertEqual(len(out), len(data))
+        self.assertIsNotNone(bytecode.unique(out, " Loop Code "))
+        self.assertTrue(bytecode.find(out, DESIGN["mid"]["row"]))
+        self.assertIsNone(bytecode.unique(out, "Claude Code"))
+
+    def test_defio_roundtrips_utf16_patches(self):
+        _, (patches, _, problems, _w) = self._build()
+        self.assertEqual(problems, [])
+        meta, loaded = defio.loads(defio.dumps({"verified": True}, patches))
+        self.assertEqual(len(loaded), len(patches))
+        for a, b in zip(patches, loaded):
+            self.assertEqual(a["new"], b["new"], a["name"])
+            self.assertEqual(a["sha1"], b["sha1"])
 
 
 class TestSlotLayoutDrift(unittest.TestCase):
