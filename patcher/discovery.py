@@ -88,8 +88,11 @@ def validate_name(raw: str) -> str:
     return " " * (pad // 2) + raw + " " * (pad - pad // 2)
 
 
-def validate_version(raw: str) -> str:
-    """校验版本显示串(1-VERSION_MAX 个字符);不合法抛 ValueError,返回原串。
+def validate_version(raw: str, max_len: int = VERSION_MAX) -> str:
+    """校验版本显示串(1-max_len 个字符);不合法抛 ValueError,返回原串。
+
+    max_len=None 用于改写内部版本常量的场景: 那时长度由真实版本决定
+    (必须等长),而不是由 ["v",X] 显示位的宽度决定。
 
     和名字一样受 JS 语法约束(见 _js_bad_chars)。补齐到各显示位的实际
     可用宽度在 _versions 里做,这里只做字符集与长度上限校验。
@@ -101,8 +104,8 @@ def validate_version(raw: str) -> str:
         raise ValueError(
             f"display.version 含不支持的字符 {bad[0]!r}: 只允许可打印 ASCII,"
             "且不能是引号/反斜杠/反引号/$(会破坏二进制内嵌的 JS)")
-    if len(raw) > VERSION_MAX:
-        raise ValueError(f"display.version 超过 {VERSION_MAX} 字符({len(raw)}): {raw!r}")
+    if max_len is not None and len(raw) > max_len:
+        raise ValueError(f"display.version 超过 {max_len} 字符({len(raw)}): {raw!r}")
     return raw
 
 _CONTENT = r'((?:\\u[0-9A-Fa-f]{4}|[^"\\])*)'

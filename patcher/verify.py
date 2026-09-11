@@ -220,7 +220,9 @@ def run(binary: str, cfg: dict, pty: bool = False) -> int:
         ui.fail("显示内容计数未通过")
         return 1
 
-    ui.step("运行 --version(证明内部版本未受影响)")
+    rewrote = bool(display.get("rewrite_real_version")) and version
+    ui.step("运行 --version" + ("(已选择改写内部版本,这里会是假版本)" if rewrote
+                                else "(证明内部版本未受影响)"))
     try:
         r = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=60)
         out = (r.stdout or r.stderr).strip()

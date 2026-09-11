@@ -46,7 +46,8 @@ def load_design(project_root: pathlib.Path, design_name: str) -> dict:
         return tomlmini.loads(f.read())
 
 
-def _show_preview(patches, name, version, theme_color=None, design=None):
+def _show_preview(patches, name, version, theme_color=None, design=None,
+                  rewrote_real_version=False):
     """原图标 vs 新图标对照 + 名字/版本/颜色汇总。"""
     for p in patches:
         if p.get("art_old") and p.get("art_new"):
@@ -68,8 +69,11 @@ def _show_preview(patches, name, version, theme_color=None, design=None):
         ui.info(ui.bold("名字:") + "  " + ui.arrow('"Claude Code"', f'"{name}"')
                 + ui.dim(f"(共 {n_name} 处显示位)"))
     if n_ver:
+        note = ("内部版本常量已被改写,--version 与更新检查同步变化"
+                if rewrote_real_version else
+                f"共 {n_ver} 处显示位,内部版本常量不动")
         ui.info(ui.bold("版本:") + "  " + ui.arrow("真实版本", version)
-                + ui.dim(f"(共 {n_ver} 处显示位,内部版本常量不动)"))
+                + ui.dim(f"({note})"))
     if n_color and theme_color:
         hexs = "%02X%02X%02X" % theme_color
         ui.info(ui.bold("主题色:") + "  " + ui.arrow("品牌橙", f"#{hexs}")
@@ -114,9 +118,11 @@ def run(binary: str, cfg: dict, project_root: pathlib.Path,
     if name != raw_name:
         ui.info(f"名字不足 {discovery.NAME_MAX} 字符,已居中补齐: {raw_name!r} → {name!r}")
     # real_version 时版本串不会被使用,不做校验
+    rewrite_version = bool(display.get("rewrite_real_version"))
     if not real_version:
         try:
-            discovery.validate_version(version)
+            discovery.validate_version(
+                version, max_len=None if rewrite_version else discovery.VERSION_MAX)
         except ValueError as e:
             ui.fail(f"配置错误: {e}")
             return 1
@@ -129,7 +135,7 @@ def run(binary: str, cfg: dict, project_root: pathlib.Path,
     patches, report, problems, warnings = discovery.build_patches(
         data, name, version_arg, design, theme_color=theme_color,
         real_version=probed,
-        rewrite_real_version=bool(display.get("rewrite_real_version")))
+        rewrite_real_version=rewrite_version)
     for line in report:
         ui.ok(line)
     for line in warnings:
@@ -164,7 +170,9 @@ def run(binary: str, cfg: dict, project_root: pathlib.Path,
         return 2
 
     ui.step("替换预览")
-    _show_preview(patches, name, version, theme_color, design)
+    _show_preview(patches, name, version, theme_color, design,
+                  rewrote_real_version=rewrite_version
+                  and any(p.get('cat') == 'version' for p in patches))
 
     pathlib.Path(out).write_text(defio.dumps(meta, patches), encoding="utf-8")
     ui.step("完成")
