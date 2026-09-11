@@ -40,8 +40,12 @@ def dumps(meta: dict, patches: list) -> str:
             lines.append(f"sha1 = {tomlmini.emit_str(p['sha1'])}")
         if p.get("offset") is not None:
             lines.append(f"offset = {p['offset']}")
+        # 常量池条目是 UTF-16,字节里带 NUL,按 enc 存可读文本而不是裸字节
+        enc = p.get("enc") or "ascii"
+        if enc != "ascii":
+            lines.append(f"enc = {tomlmini.emit_str(enc)}")
         lines += [
-            f"new = {tomlmini.emit_str(p['new'].decode('ascii'))}",
+            f"new = {tomlmini.emit_str(p['new'].decode(enc))}",
             f"expected = {p['expected']}",
         ]
     return "\n".join(lines) + "\n"
@@ -53,13 +57,16 @@ def loads(text: str):
     patches = []
     for i, p in enumerate(doc.get("patch", [])):
         try:
+            enc = p.get("enc", "ascii")
+            if enc not in ("ascii", "utf-16-le", "latin-1"):
+                raise ValueError(f"不支持的 enc: {enc!r}")
             old = p["old"].encode("ascii") if "old" in p else None
             if old is None:
                 if "sha1" not in p:
                     raise KeyError("old/sha1")
                 if "offset" not in p:
                     raise KeyError("offset")
-            new = p["new"].encode("ascii")
+            new = p["new"].encode(enc)
             expected = int(p["expected"])
             if old is not None and len(old) != len(new):
                 raise ValueError(f"old/new 长度不等({len(old)} vs {len(new)})")
@@ -70,6 +77,7 @@ def loads(text: str):
                 "cat": p.get("cat", ""),
                 "desc": p.get("desc", ""),
                 "old": old,
+                "enc": enc,
                 "sha1": p.get("sha1", ""),
                 "offset": int(p["offset"]) if "offset" in p else None,
                 "new": new,

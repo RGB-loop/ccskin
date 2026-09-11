@@ -1,6 +1,6 @@
 ---
 name: ccskin
-version: 0.2.0
+version: 0.3.0
 description: >
   给 Claude Code CLI 换肤/换主题/改启动画面:替换像素图标、产品名、版本号显示、
   主题色(仅显示层,不动内部逻辑)。当用户提到 claude code 换肤、改主题、改图标、
@@ -18,11 +18,23 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 通过"等长字节替换 + ad-hoc 重签名"修改 claude 二进制的**显示层**。
 内部版本常量、更新检查、API 行为完全不变(`--version` 仍打印真实版本,这也是验证手段)。
 
+## 两条补丁通道(先搞清楚当前二进制走哪条)
+
+- **bytecode 构建**(文件里有 `// @bun @bytecode`,2.1.26x 起):运行时读的是
+  bytecode 常量池,二进制里那份 JS 源码文本**不驱动 UI**。改源码文本能通过
+  一切计数与 sha1 校验而屏幕毫无变化 —— 必须打到常量池(`bytecode.py`)。
+- **老版本**:仍是源码文本通道。
+
+`discovery.build_patches` 自动判定并切换,`verify` 跟着切。排障先看
+`docs/pitfalls.md` 第 0 条。
+
 ## 硬性规则(违反会搞坏二进制)
 
 - 任何替换必须逐字节等长;`expected` 计数或 sha1 指纹不符**必须中止**,禁止强行 patch
 - 只在用户自己的二进制上操作;不分发二进制;不提交 `config.toml`
 - 备份(`<binary>.orig`)已存在时绝不覆盖
+- 常量池按内容去重:同一条可能被多处共用。设计稿要求一条同时变成两种图案时
+  **报错而不是随便挑一个**;版本号与 `--version` 共用一条,默认跳过不改
 
 ## 怎么用(按场景)
 
@@ -39,7 +51,10 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 
 3. **改显示内容(名字/版本/颜色/图标)**: 引导用户跑 `skin` 向导;
    或编辑 `config.toml`(name ≤11 字符、version ≤5 字符、theme_color 6 位 hex、
-   icon_design 指向 design/*.toml),然后 `all --apply -y`
+   icon_design 指向 design/*.toml),然后 `all --apply -y`。
+   bytecode 构建上版本号改不了(与 `--version` 共用常量),会自动跳过;
+   用户坚持要改再开 `rewrite_real_version`,并说清 `--version` 和更新检查
+   都会看到假版本
 
 4. **新图标设计**: 复制 `design/octopus.toml` 改字符,先
    `python3 -m patcher preview <新设计.toml>` 看效果,再进 skin 流程。
@@ -49,9 +64,10 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 
 ## 验证清单(做完必须过)
 
-- `verify` 图标预览形状正确;显示名/版本计数 > 0
+- `verify` 图标预览形状正确;显示名在常量池/源码里命中 > 0
 - `--version` 输出**真实**版本号(证明内部没被碰)
-- `--pty` 抓屏含显示名和版本
+- **bytecode 构建必须做 `--pty` 抓屏**:计数类校验证明不了 UI 真的变了,
+  只有抓屏能。抓屏里看到旧图标/旧名字 = 补丁打错了通道
 
 ## 参考文档
 
