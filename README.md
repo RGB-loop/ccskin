@@ -15,9 +15,19 @@ own output, untouched.</sub>
 
 ## How it works
 
-Claude Code's native binary embeds its JS bundle as plain text. ccskin finds
-the display-related string anchors in that text and performs **byte-length-equal
-replacements** (offsets stay valid), then re-signs the binary ad-hoc. Pipeline:
+ccskin locates the display-related strings, performs **byte-length-equal
+replacements** (offsets stay valid), then re-signs the binary ad-hoc.
+
+Which copy of those strings gets patched depends on how the binary was built,
+and the tool detects this automatically:
+
+- **2.1.26x and later** are compiled with `bun build --bytecode`. The JS source
+  text is still embedded, but the runtime reads the **bytecode constant pool** —
+  patching the source text passes every check while changing nothing on screen,
+  so patches go to the pool.
+- **Earlier builds** have no bytecode; the JS source text is still patched.
+
+Pipeline:
 
 ```
 analyze          patch             sign              verify
@@ -100,9 +110,24 @@ All replacements must be byte-length equal, therefore:
 ccskin preview design/octopus.toml   # render a design without touching binaries
 ```
 
-Each slot in a design file holds visible characters; `glyphpack` re-packs them
-into the exact escape/literal shape of the original slots. Add your own
-`design/*.toml` and point `icon_design` at it.
+Each slot in a design file holds visible characters. **Slot boundaries are
+detected from the binary** — upstream shifts characters between slots across
+versions (2.1.261 grew `r1E` from 5 to 6 columns and shrank `r1R` from 1 to 0)
+while the total row width stays the same, so a design only has to get each
+*row* width right. Add your own `design/*.toml` and point `icon_design` at it.
+
+Note that identical strings are deduplicated inside the binary, so variants
+sharing a slot cannot be given different art (upstream itself shares `r1E`
+between `default` and `arms-up`). `analyze` reports such conflicts instead of
+silently picking one.
+
+## Version number on bytecode builds
+
+The startup banner and `--version` read the *same* constant, so the displayed
+version cannot be faked on its own — it is skipped by default. Set
+`rewrite_real_version = true` if you accept that `--version` and the update
+check will report the fake version too (it must be the same length as the real
+one).
 
 ## Updating Claude Code
 
