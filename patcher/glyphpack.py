@@ -38,6 +38,30 @@ def decode_escapes(s: str) -> str:
     return ESC_RE.sub(lambda m: chr(int(m.group(1), 16)), s)
 
 
+def pack_row(slot_contents, glyphs: str) -> list:
+    """把设计稿的一整行字符,按二进制现有的槽位切分重新分配回各槽位。
+
+    上游会在版本之间挪动字符在槽位间的边界(如 r1E 5→6 列、r1R 1→0 列)
+    而整行列数不变。按整行接收设计稿再现场切分,设计稿就不必跟着每个版本改。
+
+    slot_contents: [(槽位名, 源码形式内容), ...],按显示顺序
+    返回与之等长的新源码内容列表。
+    """
+    token_lists = [tokenize(c) for _, c in slot_contents]
+    total = sum(len(t) for t in token_lists)
+    if len(glyphs) != total:
+        widths = " + ".join(
+            f"{name}={len(t)}" for (name, _), t in zip(slot_contents, token_lists))
+        raise ValueError(
+            f"整行列数不符: 二进制槽位共 {total} 列({widths}),"
+            f"设计稿给了 {len(glyphs)} 列: {glyphs!r}")
+    out, i = [], 0
+    for tokens in token_lists:
+        out.append(pack(tokens, glyphs[i:i + len(tokens)]))
+        i += len(tokens)
+    return out
+
+
 def pack(tokens, glyphs: str) -> str:
     """按原 token 形状,用设计稿的可见字符重新生成源码字符串。"""
     chars = list(glyphs)

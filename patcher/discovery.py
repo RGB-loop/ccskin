@@ -41,11 +41,13 @@ VERSION_MAX = 5    # 版本显示串上限(受最窄的 ["v",X] 显示位宽度�
 # ---------- 名字显示位 ----------
 NAME_MAX = 11  # 原串 "Claude Code" 的字符数,替换必须等长
 
+# 显示位在版本之间会被上游整个删掉(如 2.1.261 移除了输入框边框上的产品名)。
+# required=False 的锚点缺失只提示,不算失败;全都找不到才是结构真的变了。
 NAME_SITES = [
-    ("name_title",          'children:"Claude Code"', lambda n: f'children:"{n}"', "启动/面板标题"),
-    ("name_border",         '("Claude Code")',        lambda n: f'("{n}")',        "输入框边框(展开)"),
-    ("name_border_compact", '(" Claude Code ")',      lambda n: f'(" {n} ")',      "输入框边框(紧凑)"),
-    ("name_header",         '["Claude Code"," "]',    lambda n: f'["{n}"," "]',    "头部显示"),
+    ("name_title",          'children:"Claude Code"', lambda n: f'children:"{n}"', "启动/面板标题", True),
+    ("name_border",         '("Claude Code")',        lambda n: f'("{n}")',        "输入框边框(展开)", False),
+    ("name_border_compact", '(" Claude Code ")',      lambda n: f'(" {n} ")',      "输入框边框(紧凑)", False),
+    ("name_header",         '["Claude Code"," "]',    lambda n: f'["{n}"," "]',    "头部显示", False),
 ]
 
 
@@ -104,6 +106,24 @@ _ROW_RE = re.compile(
     r'"?(default|look-left|look-right|arms-up)"?:"' + _CONTENT + r'"'
 )
 _SLOT_NAMES = ("r1L", "r1E", "r1R", "r2L", "r2R")
+# 槽位按显示行分组: 设计稿按整行给,边界由二进制现场决定(见 glyphpack.pack_row)
+_ICON_ROWS = (("r1L", "r1E", "r1R"), ("r2L", "r2R"))
+
+
+def _layout_sig(slot_contents: dict) -> str:
+    """探测到的槽位列数,如 'r1L=2 r1E=6 r1R=0 | r2L=2 r2R=2'。"""
+    return " | ".join(
+        " ".join(f"{s}={len(glyphpack.tokenize(slot_contents[s]))}" for s in row)
+        for row in _ICON_ROWS)
+
+
+def _report_layouts(layouts, report):
+    """把探测到的槽位布局写进报告(相同布局的变体合并成一行)。"""
+    grouped = {}
+    for variant, sig in layouts:
+        grouped.setdefault(sig, []).append(variant)
+    for sig, variants in grouped.items():
+        report.append(f"槽位布局 {'/'.join(variants)}: {sig}")
 
 
 # ---------- JS 源码扫描辅助 ----------
@@ -209,19 +229,24 @@ def _icon_table(data, design, patches, report, problems):
 
     # 位置化重建: 逐个变体按正则命中位置替换槽位,
     # 同一原型槽位内容在不同变体里可以映射到不同图案
-    new_parts, last = [], 0
+    new_parts, last, layouts = [], 0, []
     for m in slot_matches:
         variant = m.group(1)
         dslots = design.get("slots", {}).get(variant)
         if not dslots:
             problems.append(f"设计稿缺少变体 [{variant}] 的槽位定义")
             continue
+        old_contents = dict(zip(_SLOT_NAMES, m.groups()[1:]))
+        layouts.append((variant, _layout_sig(old_contents)))
+        packed = dict(old_contents)
         try:
-            packed = [
-                glyphpack.pack(glyphpack.tokenize(old_c), dslots[slot_name])
-                if slot_name in dslots else old_c
-                for slot_name, old_c in zip(_SLOT_NAMES, m.groups()[1:])
-            ]
+            for row_slots in _ICON_ROWS:
+                if not all(s in dslots for s in row_slots):
+                    continue
+                # 设计稿按整行给,现场按二进制的槽位边界切回去
+                packed.update(zip(row_slots, glyphpack.pack_row(
+                    [(s, old_contents[s]) for s in row_slots],
+                    "".join(dslots[s] for s in row_slots))))
         except ValueError as e:
             problems.append(f"设计稿与槽位不匹配({variant}): {e}")
             continue
@@ -229,12 +254,12 @@ def _icon_table(data, design, patches, report, problems):
         new_parts.append(table1[last:m.start()])
         new_parts.append(
             prefix
-            + f'r1L:"{packed[0]}",r1E:"{packed[1]}",r1R:"{packed[2]}",'
-            + f'r2L:"{packed[3]}",r2R:"{packed[4]}"' + "}"
+            + ",".join(f'{s}:"{packed[s]}"' for s in _SLOT_NAMES) + "}"
         )
         last = m.end()
     if problems:
         return
+    _report_layouts(layouts, report)
     new_table1 = "".join(new_parts) + table1[last:]
 
     # 底脚表(N2p): 所有变体用同一设计,全局内容替换即可
@@ -384,9 +409,9 @@ def _icon_html(data, design, patches, report, problems):
     report.append(f"icon_html @ {offs[0]:,}: HTML 页 logo 模板 × {len(offs)}")
 
 
-def _names(data, display_name, patches, report, problems):
+def _names(data, display_name, patches, report, problems, warnings):
     offsets = {}
-    for entry, old_s, make_new, where in NAME_SITES:
+    for entry, old_s, make_new, where, required in NAME_SITES:
         old_b = old_s.encode("ascii")
         new_b = make_new(display_name).encode("ascii")
         if len(old_b) != len(new_b):
@@ -395,7 +420,8 @@ def _names(data, display_name, patches, report, problems):
                 f"{display_name!r}")
         offs = find_all(data, old_b)
         if not offs:
-            problems.append(f"名字锚点未找到: {old_s}(可能已打过补丁或结构变化)")
+            msg = f"名字锚点未找到: {old_s}(可能已打过补丁或结构变化)"
+            (problems if required else warnings).append(msg)
             continue
         patches.append({
             "name": entry, "cat": "name",
@@ -405,6 +431,8 @@ def _names(data, display_name, patches, report, problems):
         })
         report.append(f"{entry} @ {offs[0]:,}: {where} × {len(offs)}")
         offsets[entry] = offs
+    if not offsets:
+        problems.append("所有名字锚点都未找到 —— 该版本结构变了,不要猜")
     return offsets
 
 
@@ -430,14 +458,27 @@ def _versions(data, name_offsets, display_version, patches, report, problems):
     if not found:
         problems.append("版本号显示位未找到(名字锚点附近没有 [\"v\",变量] / `v${变量}`)")
         return
+
+    # 显示位容量取决于该版本压缩后的变量名长度(["v",ms] 比 ["v",c3e] 窄一格),
+    # 因此按二进制现场探测而非用固定上限。容量必须先按最窄位统一校验:
+    # 逐个跳过放不下的位会让一部分显示位是假版本、另一部分是真版本。
+    caps = {old_b: len(old_b) - (4 if kind == "arr" else 2)
+            for old_b, (kind, _) in found.items()}
+    tightest = min(caps, key=caps.get)
+    # 模板位 `v${x}` 渲染时前面还有一个空格,占一格
+    budget = min(caps[b] - (1 if found[b][0] == "tpl" else 0) for b in caps)
+    report.append(
+        f"版本位容量(自动探测): 最多 {budget} 字符(最窄位 {tightest.decode()})")
+    if len(display_version) > budget:
+        problems.append(
+            f"版本号 {display_version!r}({len(display_version)} 字符)放不下: "
+            f"本版本最窄显示位 {tightest.decode()} 只有 {budget} 字符 —— "
+            f"改短 display.version,或用 real_version 保持真实版本")
+        return
+
     for old_b, (kind, offs) in sorted(found.items()):
-        inner = len(old_b) - (4 if kind == "arr" else 2)
+        inner = caps[old_b]
         v = (" " + display_version) if kind == "tpl" else display_version
-        if len(v) > inner:
-            problems.append(
-                f"版本号 {display_version!r} 放不下显示位 {old_b.decode()}(最多 {inner} 字符)"
-            )
-            continue
         v = v.ljust(inner, " ")
         new_b = (b'["' + v.encode() + b'"]') if kind == "arr" else (b'`' + v.encode() + b'`')
         cnt = data.count(old_b)
@@ -525,7 +566,11 @@ def _theme_color(data, color, patches, report, problems):
 
 def build_patches(data: bytes, display_name: str, display_version: str, design: dict,
                   theme_color=None):
-    """返回 (patches, report, problems)。
+    """返回 (patches, report, problems, warnings)。
+
+    problems 是致命问题(草稿不可直接用),warnings 只是提示。
+    版本号与主题色的发现与图标/名字互相独立,不因彼此失败而跳过 ——
+    否则一个可忽略的缺失锚点会连坐掉整批本来能生成的补丁。
 
     design=None      → 不动图标(保持原图标)
     display_version=None → 不动版本位(显示真实版本)
@@ -533,17 +578,17 @@ def build_patches(data: bytes, display_name: str, display_version: str, design: 
     patches: list = []
     report: list = []
     problems: list = []
+    warnings: list = []
     if design:
         _icon_table(data, design, patches, report, problems)
         _icon_feet(data, design, patches, report, problems)
         _icon_mid(data, design, patches, report, problems)
         _icon_html(data, design, patches, report, problems)
-    name_offsets = _names(data, display_name, patches, report, problems)
-    if not problems:
-        if display_version:
-            _versions(data, name_offsets, display_version, patches, report, problems)
-        _theme_color(data, theme_color, patches, report, problems)
-    return patches, report, problems
+    name_offsets = _names(data, display_name, patches, report, problems, warnings)
+    if display_version and name_offsets:
+        _versions(data, name_offsets, display_version, patches, report, problems)
+    _theme_color(data, theme_color, patches, report, problems)
+    return patches, report, problems, warnings
 
 
 def collect_contexts(data: bytes, limit_per_kind: int = 3) -> list:

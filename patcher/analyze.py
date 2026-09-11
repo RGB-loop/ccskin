@@ -118,10 +118,12 @@ def run(binary: str, cfg: dict, project_root: pathlib.Path,
     version_arg = None if real_version else version
 
     ui.step("发现锚点")
-    patches, report, problems = discovery.build_patches(
+    patches, report, problems, warnings = discovery.build_patches(
         data, name, version_arg, design, theme_color=theme_color)
     for line in report:
         ui.ok(line)
+    for line in warnings:
+        ui.warn(line)
     for line in problems:
         ui.fail(line)
 
