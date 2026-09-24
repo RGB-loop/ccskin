@@ -7,14 +7,16 @@ import hashlib
 import os
 import struct
 import pathlib
+import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from patcher import (bytecode, defio, discovery, glyphpack, locate,
-                     patch as patch_mod, tomlmini)
+from patcher import (analyze, bytecode, defio, discovery, glyphpack, locate,
+                     patch as patch_mod, pipeline, tomlmini)
 
 
 def esc(s: str) -> str:
@@ -632,6 +634,132 @@ class TestLocate(unittest.TestCase):
             self.assertEqual(locate.sniff_kind(str(m)), locate.KIND_MACHO)
             self.assertEqual(locate.sniff_kind(str(j)), locate.KIND_JS)
             self.assertEqual(locate.sniff_kind(str(pathlib.Path(td) / "x")), "unknown")
+
+
+class TestProbeVersionRetry(unittest.TestCase):
+    def test_succeeds_on_second_attempt(self):
+        calls = []
+
+        def fake_probe(binary):
+            calls.append(1)
+            return None if len(calls) == 1 else "2.1.281"
+
+        with mock.patch("patcher.analyze._try_probe", side_effect=fake_probe), \
+             mock.patch("patcher.analyze.time.sleep"):
+            result = analyze.probe_version("/fake/binary")
+        self.assertEqual(result, "2.1.281")
+        self.assertEqual(len(calls), 2)
+
+    def test_returns_none_after_both_fail(self):
+        with mock.patch("patcher.analyze._try_probe", return_value=None), \
+             mock.patch("patcher.analyze.time.sleep"):
+            result = analyze.probe_version("/fake/binary")
+        self.assertIsNone(result)
+
+    def test_returns_immediately_on_first_success(self):
+        with mock.patch("patcher.analyze._try_probe", return_value="1.0.0"):
+            result = analyze.probe_version("/fake/binary")
+        self.assertEqual(result, "1.0.0")
+
+
+class TestProbeVersionFromData(unittest.TestCase):
+    def test_bytecode_build(self):
+        data = make_bytecode_bundle(version="2.1.281")
+        result = analyze.probe_version_from_data(data)
+        self.assertEqual(result, "2.1.281")
+
+    def test_non_bytecode_build(self):
+        data = b'"3.0.42"' + os.urandom(200)
+        result = analyze.probe_version_from_data(data)
+        self.assertEqual(result, "3.0.42")
+
+    def test_no_match(self):
+        data = os.urandom(500)
+        result = analyze.probe_version_from_data(data)
+        self.assertIsNone(result)
+
+    def test_rejects_high_major_version(self):
+        data = b'"99.1.0"' + os.urandom(200)
+        result = analyze.probe_version_from_data(data)
+        self.assertIsNone(result)
+
+
+class TestBundle(unittest.TestCase):
+    def _make_patchable_binary(self, td):
+        """创建一个可供 pipeline 打补丁的合成二进制(只需能通过 analyze)。"""
+        binary = pathlib.Path(td) / "claude"
+        data = make_bytecode_bundle(version="2.1.300")
+        binary.write_bytes(data)
+        binary.chmod(0o755)
+        return str(binary)
+
+    def test_bundle_creates_directory_structure(self):
+        with tempfile.TemporaryDirectory() as td:
+            binary = self._make_patchable_binary(td)
+            project = pathlib.Path(__file__).resolve().parent.parent
+            bundle_dir = pathlib.Path(td) / "v2.1.300"
+
+            with mock.patch("patcher.analyze.probe_version", return_value="2.1.300"), \
+                 mock.patch("patcher.pipeline.run", return_value=0):
+                rc = pipeline.bundle(binary, {}, project)
+
+            self.assertEqual(rc, 0)
+            self.assertTrue(bundle_dir.exists())
+            self.assertTrue((bundle_dir / "claude").exists())
+            self.assertTrue((bundle_dir / "claudeskin").exists())
+
+    def test_bundle_custom_suffix(self):
+        with tempfile.TemporaryDirectory() as td:
+            binary = self._make_patchable_binary(td)
+            project = pathlib.Path(__file__).resolve().parent.parent
+
+            with mock.patch("patcher.analyze.probe_version", return_value="2.1.300"), \
+                 mock.patch("patcher.pipeline.run", return_value=0):
+                rc = pipeline.bundle(binary, {}, project, suffix="mod")
+
+            bundle_dir = pathlib.Path(td) / "v2.1.300"
+            self.assertEqual(rc, 0)
+            self.assertTrue((bundle_dir / "claudemod").exists())
+
+    def test_bundle_custom_output_dir(self):
+        with tempfile.TemporaryDirectory() as td:
+            binary = self._make_patchable_binary(td)
+            project = pathlib.Path(__file__).resolve().parent.parent
+            custom = pathlib.Path(td) / "custom_out"
+
+            with mock.patch("patcher.analyze.probe_version", return_value="2.1.300"), \
+                 mock.patch("patcher.pipeline.run", return_value=0):
+                rc = pipeline.bundle(binary, {}, project, output_dir=str(custom))
+
+            self.assertEqual(rc, 0)
+            self.assertTrue(custom.exists())
+            self.assertTrue((custom / "claude").exists())
+            self.assertTrue((custom / "claudeskin").exists())
+
+    def test_bundle_fails_on_probe_failure(self):
+        with tempfile.TemporaryDirectory() as td:
+            binary = pathlib.Path(td) / "claude"
+            binary.write_bytes(os.urandom(500))
+            project = pathlib.Path(__file__).resolve().parent.parent
+
+            with mock.patch("patcher.analyze.probe_version", return_value=None), \
+                 mock.patch("patcher.analyze.probe_version_from_data", return_value=None):
+                rc = pipeline.bundle(str(binary), {}, project)
+
+            self.assertEqual(rc, 1)
+
+    def test_bundle_original_untouched(self):
+        with tempfile.TemporaryDirectory() as td:
+            binary = self._make_patchable_binary(td)
+            original_data = pathlib.Path(binary).read_bytes()
+            project = pathlib.Path(__file__).resolve().parent.parent
+            bundle_dir = pathlib.Path(td) / "v2.1.300"
+
+            with mock.patch("patcher.analyze.probe_version", return_value="2.1.300"), \
+                 mock.patch("patcher.pipeline.run", return_value=0):
+                pipeline.bundle(binary, {}, project)
+
+            self.assertEqual((bundle_dir / "claude").read_bytes(), original_data)
 
 
 if __name__ == "__main__":
