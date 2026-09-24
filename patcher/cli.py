@@ -66,6 +66,15 @@ def _cmd_all(args, cfg):
     from . import pipeline
 
     binary = _resolve_binary(args)
+    if args.bundle:
+        if not args.apply:
+            from . import ui
+            ui.fail("--bundle 必须搭配 --apply 使用")
+            return 1
+        return pipeline.bundle(binary, cfg, PROJECT_ROOT,
+                               output_dir=args.output_dir, suffix=args.suffix,
+                               label=args.label, out=args.out, use_llm=args.llm,
+                               force=args.force, yes=args.yes, pty=args.pty)
     if not args.apply:
         rc = pipeline.run(binary, cfg, PROJECT_ROOT,
                           label=args.label, out=args.out, use_llm=args.llm,
@@ -84,7 +93,9 @@ def _cmd_skin(args, cfg):
     from . import interactive
 
     return interactive.run(getattr(args, "binary", None), cfg, PROJECT_ROOT,
-                           yes=args.yes, pty=args.pty)
+                           yes=args.yes, pty=args.pty,
+                           bundle=args.bundle, suffix=args.suffix,
+                           output_dir=args.output_dir)
 
 
 def _cmd_preview(args, cfg):
@@ -122,6 +133,10 @@ def main(argv=None):
     p.add_argument("binary", nargs="?", help="不填则自动定位系统安装")
     p.add_argument("-y", "--yes", action="store_true", help="跳过最终确认")
     p.add_argument("--pty", action="store_true", help="最后抓真实启动画面验证")
+    p.add_argument("--bundle", action="store_true",
+                   help="创建版本目录,放入原始 + 换肤二进制")
+    p.add_argument("--suffix", default="skin", help="换肤文件后缀(默认 skin)")
+    p.add_argument("--output-dir", help="bundle 输出目录(默认在源文件旁建 v版本号/)")
     p.set_defaults(func=_cmd_skin)
 
     p = sub.add_parser("analyze", help="发现锚点,生成补丁定义 TOML")
@@ -158,6 +173,10 @@ def main(argv=None):
                    help="覆盖已存在的定义文件(默认写 .draft.toml)")
     p.add_argument("--pty", action="store_true")
     p.add_argument("-y", "--yes", action="store_true", help="跳过写入前的交互确认")
+    p.add_argument("--bundle", action="store_true",
+                   help="创建版本目录,放入原始 + 换肤二进制")
+    p.add_argument("--suffix", default="skin", help="换肤文件后缀(默认 skin)")
+    p.add_argument("--output-dir", help="bundle 输出目录(默认在源文件旁建 v版本号/)")
     p.set_defaults(func=_cmd_all)
 
     p = sub.add_parser("preview", help="渲染图标设计稿预览")

@@ -4,13 +4,15 @@
 """
 import pathlib
 import platform
+import re
 import subprocess
+import time
 
-from . import defio, discovery, llm as llm_mod, ui
+from . import bytecode, defio, discovery, llm as llm_mod, ui
 
 
-def probe_version(binary: str):
-    """跑 binary --version 拿版本号;失败(如被 Gatekeeper 拦)返回 None。"""
+def _try_probe(binary: str):
+    """单次 binary --version 尝试,成功返回版本串,失败返回 None。"""
     try:
         r = subprocess.run(
             [binary, "--version"], capture_output=True, text=True, timeout=30
@@ -19,6 +21,60 @@ def probe_version(binary: str):
         return token or None
     except Exception:
         return None
+
+
+def probe_version(binary: str):
+    """跑 binary --version 拿版本号;首次失败等 2 秒重试一次(macOS Gatekeeper
+    首次执行新路径的二进制可能需要额外的公证检查时间)。"""
+    v = _try_probe(binary)
+    if v:
+        return v
+    time.sleep(2)
+    return _try_probe(binary)
+
+
+def remove_quarantine(binary: str):
+    """去掉 macOS quarantine 属性,避免 Gatekeeper 拦截。"""
+    if platform.system() == "Darwin":
+        subprocess.run(["xattr", "-d", "com.apple.quarantine", binary],
+                       capture_output=True)
+
+
+_SEMVER_QUOTED_RE = re.compile(rb'"(\d{1,2}\.\d{1,2}\.\d{1,4})"')
+_SEMVER_RAW_RE = re.compile(rb'(\d{1,2}\.\d{1,2}\.\d{1,4})')
+
+
+def probe_version_from_data(data: bytes):
+    """从二进制数据中提取版本号(当 --version 探测失败时的降级方案)。
+
+    先扫描源码文本中带引号的 semver 模式;bytecode 构建上再验证常量池
+    唯一性,找不到时降级扫不带引号的模式(常量池条目是原始字节)。
+    """
+    candidates = set()
+    for m in _SEMVER_QUOTED_RE.finditer(data):
+        v = m.group(1).decode("ascii", errors="ignore")
+        if int(v.split(".")[0]) <= 19:
+            candidates.add(v)
+    is_bc = bytecode.is_bytecode_build(data)
+    if is_bc:
+        pool_hits = [v for v in candidates if bytecode.unique(data, v)]
+        if len(pool_hits) == 1:
+            return pool_hits[0]
+        extra = set()
+        for m in _SEMVER_RAW_RE.finditer(data):
+            v = m.group(1).decode("ascii", errors="ignore")
+            if v not in candidates and int(v.split(".")[0]) <= 19:
+                extra.add(v)
+        pool_hits = [v for v in extra if bytecode.unique(data, v)]
+        if len(pool_hits) == 1:
+            return pool_hits[0]
+        return None
+    if not candidates:
+        return None
+    shortest = min(candidates, key=len)
+    if len(shortest) <= 10:
+        return shortest
+    return None
 
 
 def safe_label(label: str) -> str:
@@ -88,9 +144,7 @@ def run(binary: str, cfg: dict, project_root: pathlib.Path,
     ui.info(f"{binary} " + ui.dim(f"({len(data):,} bytes)"))
 
     # cp/下载来的文件可能带 quarantine,先去掉,否则后面 --version 探测会被 Gatekeeper 杀
-    if platform.system() == "Darwin":
-        subprocess.run(["xattr", "-d", "com.apple.quarantine", binary],
-                       capture_output=True)
+    remove_quarantine(binary)
 
     display = cfg.get("display", {})
     raw_name = display.get("name", "")
@@ -132,6 +186,10 @@ def run(binary: str, cfg: dict, project_root: pathlib.Path,
 
     ui.step("发现锚点")
     probed = probe_version(binary)
+    if not probed:
+        probed = probe_version_from_data(data)
+        if probed:
+            ui.info(f"--version 探测失败,从二进制数据提取到版本: {probed}")
     patches, report, problems, warnings = discovery.build_patches(
         data, name, version_arg, design, theme_color=theme_color,
         real_version=probed,

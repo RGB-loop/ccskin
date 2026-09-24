@@ -100,7 +100,8 @@ def _ask_hex() -> str:
             ui.warn(str(e))
 
 
-def run(binary, cfg, project_root: pathlib.Path, yes=False, pty=False) -> int:
+def run(binary, cfg, project_root: pathlib.Path, yes=False, pty=False,
+        bundle=False, suffix="skin", output_dir=None) -> int:
     if not sys.stdin.isatty():
         ui.fail("skin 是交互向导,请在终端里运行;非交互请用 all --apply -y")
         return 1
@@ -173,8 +174,13 @@ def run(binary, cfg, project_root: pathlib.Path, yes=False, pty=False) -> int:
         "real_version": not version_s,
     }
 
-    rc = pipeline.run(path, new_cfg, project_root,
-                      label=version, yes=True, pty=pty)
+    if bundle:
+        rc = pipeline.bundle(path, new_cfg, project_root,
+                             output_dir=output_dir, suffix=suffix,
+                             label=version, yes=True, pty=pty)
+    else:
+        rc = pipeline.run(path, new_cfg, project_root,
+                          label=version, yes=True, pty=pty)
     if rc == 0:
         _save_config(project_root, new_cfg)
     return rc
