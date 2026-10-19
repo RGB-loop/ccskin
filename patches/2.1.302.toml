@@ -1,0 +1,58 @@
+# 由 patcher analyze 生成(锚点全部发现时 verified 自动为 true,可直接用)
+[meta]
+target_version = '2.1.302'
+design = 'octopus.toml'
+display_name = ' Max Code  '
+display_version = 'v99'
+theme_color = 'A855F7'
+verified = false
+
+[[patch]]
+name = 'icon_mid_row'
+cat = 'icon'
+desc = "mid.row → '█◉█◉█'"
+sha1 = '1a2851d7d77422cda11d9d5bf19eebcca6039aab'
+offset = 96826952
+enc = 'utf-16-le'
+new = '█◉█◉█'
+expected = 1
+
+[[patch]]
+name = 'name'
+cat = 'name'
+desc = "name → ' Max Code  '"
+sha1 = '61f2de21bc4ec3ea02fbbbcc718e953a2692d5f8'
+offset = 95746468
+enc = 'latin-1'
+new = ' Max Code  '
+expected = 1
+
+[[patch]]
+name = 'name_welcome'
+cat = 'name'
+desc = "name_welcome → 'Welcome to  Max Code  '"
+sha1 = '5dbda879ebc1ae7b03c10b815c6c0ab53587f5e3'
+offset = 97259448
+enc = 'latin-1'
+new = 'Welcome to  Max Code  '
+expected = 1
+
+[[patch]]
+name = 'color_clawd_body'
+cat = 'color'
+desc = "clawd_body → 'rgb(168,85,247)'"
+sha1 = 'e3161cd3c031125bdbed6c0a3599f3a040036d88'
+offset = 102632288
+enc = 'latin-1'
+new = 'rgb(168,85,247)'
+expected = 1
+
+[[patch]]
+name = 'color_claude'
+cat = 'color'
+desc = "claude → 'rgb(168,85,247)'"
+sha1 = '9eedcf8b3b272bea5582b21be49541e5f2713caf'
+offset = 102633744
+enc = 'latin-1'
+new = 'rgb(168,85,247)'
+expected = 1

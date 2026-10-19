@@ -590,6 +590,108 @@ def _pool_record(mapping, conflicts, old_vis, new_vis, where):
     prev[1].append(where)   # 多个槽位共用同一条,记全便于人工核对
 
 
+# ---------- v2 icon 结构(≥2.1.302): Xe/Je/Qe/Ze ----------
+_V2_ANCHOR = b'Xe={down:{r1L:"'
+
+_V2_ARM_RE = re.compile(
+    r'"?(down|up|one-up)"?:\{r1L:"' + _CONTENT + r'",r1R:"' + _CONTENT +
+    r'",r2L:"' + _CONTENT + r'",r2R:"' + _CONTENT + r'"\}'
+)
+_V2_EYE_RE = re.compile(
+    r'"?(open|left|right)"?:\[\{glyphs:"(' + _CONTENT + r')"\}\]'
+)
+_V2_FEET_RE = re.compile(
+    r'"?(both|left|right)"?:"(' + _CONTENT + r')"'
+)
+
+_V2_ARM_MAP = {"down": "default", "up": "arms-up", "one-up": "default"}
+_V2_ARM_NAMES = ("r1L", "r1R", "r2L", "r2R")
+
+
+def _pool_icon_map_v2(data, design, problems, warnings):
+    """v2 结构(≥2.1.302): Xe(arms)/Je(eyes)/Qe(feet)/Ze(mouth) 四表。
+
+    v2 把 icon 拆成独立的 arms/eyes/feet 数据表,常量池里每个字符串值
+    是单独的条目。从源码文本的 Xe/Je/Qe 结构读出当前可见内容,
+    映射到设计稿的对应槽位。
+    """
+    p = data.find(_V2_ANCHOR)
+    if p < 0:
+        problems.append(
+            'logo 像素表锚点未找到(v1 {default: 和 v2 Xe={down: 均未命中)')
+        return None, [], {}
+
+    # 提取 Xe..Ze 区域文本用于正则解析
+    try:
+        window = data[p:p + 3000].decode("ascii")
+    except UnicodeDecodeError:
+        problems.append("v2 icon 区域解码失败")
+        return None, [], {}
+
+    mapping, conflicts = {}, {}
+    v2_slots = design.get("slots", {})
+
+    # arms(Xe): one-up shares entries with down/up in the constant pool,
+    # so we pick the default variant's design for conflicting slots
+    for m in _V2_ARM_RE.finditer(window):
+        variant = m.group(1)
+        design_variant = _V2_ARM_MAP.get(variant, variant)
+        dslots = v2_slots.get(design_variant, v2_slots.get("default"))
+        if not dslots:
+            continue
+        for slot_name, old_c in zip(_V2_ARM_NAMES, m.groups()[1:]):
+            if not old_c or slot_name not in dslots:
+                continue
+            old_vis = glyphpack.decode_escapes(old_c)
+            new_vis = dslots[slot_name]
+            if len(new_vis) > len(old_vis):
+                new_vis = new_vis[:len(old_vis)]
+            elif len(new_vis) < len(old_vis):
+                new_vis = new_vis + " " * (len(old_vis) - len(new_vis))
+            if old_vis in mapping and mapping[old_vis][0] != new_vis:
+                continue  # pool is de-duped; keep the first mapping
+            _pool_record(mapping, conflicts, old_vis, new_vis,
+                         f"v2.{variant}.{slot_name}")
+
+    # eyes(Je) → design.slots.default.r1E
+    r1e = v2_slots.get("default", {}).get("r1E")
+    if r1e:
+        for m in _V2_EYE_RE.finditer(window):
+            old_vis = glyphpack.decode_escapes(m.group(2))
+            new_vis = r1e
+            if len(new_vis) < len(old_vis):
+                new_vis = new_vis + " " * (len(old_vis) - len(new_vis))
+            elif len(new_vis) > len(old_vis):
+                new_vis = new_vis[:len(old_vis)]
+            _pool_record(mapping, conflicts, old_vis, new_vis,
+                         f"v2.eye.{m.group(1)}")
+
+    # body(mid): 从渲染函数搜 █████
+    mid_row = design.get("mid", {}).get("row")
+    if mid_row:
+        mid_vis = glyphpack.decode_escapes(_MID_CONTENT)
+        _pool_record(mapping, conflicts, mid_vis, mid_row, "v2.mid")
+
+    # feet(Qe) → design.feet.row (居中补齐到实际宽度)
+    feet_row = design.get("feet", {}).get("row")
+    if feet_row:
+        for m in _V2_FEET_RE.finditer(window):
+            old_vis = glyphpack.decode_escapes(m.group(2))
+            new_vis = feet_row.center(len(old_vis))
+            _pool_record(mapping, conflicts, old_vis, new_vis,
+                         f"v2.feet.{m.group(1)}")
+
+    for old_vis, targets in conflicts.items():
+        problems.append(
+            f"常量池按内容去重,{old_vis!r} 只有一条,但设计稿要求它同时变成 "
+            + " / ".join(f"{n!r}({w})" for n, w in targets.items())
+            + " —— 让这些槽位用同一个图案,或接受其中之一")
+
+    layouts = [("v2", "Xe/Je/Qe/Ze")]
+    default_vis = v2_slots.get("default", {})
+    return (None if conflicts else mapping), layouts, default_vis
+
+
 def _pool_icon_map(data, design, problems, warnings):
     """从源码 logo 表学到「当前可见内容 → 设计稿新内容」,供常量池替换用。
 
@@ -601,10 +703,9 @@ def _pool_icon_map(data, design, problems, warnings):
     if p < 0:
         problems.append('logo 像素表锚点未找到(r1L:" ...")——版本结构可能变了')
         return None, [], {}
-    start = data.rfind(b'{default:', 0, p)
+    start = data.rfind(b'{default:{r1L:', 0, p)
     if start < 0:
-        problems.append("logo 表起点 {default: 未找到")
-        return None, [], {}
+        return _pool_icon_map_v2(data, design, problems, warnings)
     try:
         end1 = match_brace(data, start)
         nstart = data.find(b'{', end1)
